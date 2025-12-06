@@ -1,0 +1,213 @@
+"""REST client for Xero API."""
+
+import re
+from datetime import datetime, timezone
+from typing import Any, Callable, Dict, Iterable, Optional
+
+import backoff
+import requests
+from singer_sdk import typing as th
+from singer_sdk.exceptions import RetriableAPIError
+from singer_sdk.helpers.jsonpath import extract_jsonpath
+from singer_sdk.streams import RESTStream
+
+from tap_xero.auth import XeroOAuth2Authenticator
+
+
+class XeroAPIError(Exception):
+    """Base exception for Xero API errors."""
+
+    def __init__(self, message: str, response: Optional[requests.Response] = None):
+        """Initialize exception."""
+        super().__init__(message)
+        self.response = response
+
+
+class XeroRateLimitError(RetriableAPIError):
+    """Exception for Xero rate limit errors (429)."""
+
+    pass
+
+
+class XeroStream(RESTStream):
+    """Base stream class for Xero API."""
+
+    url_base = "https://api.xero.com/api.xro/2.0"
+
+    # Xero uses .NET JSON date format: /Date(1419937200000+0000)/
+    _dotnet_date_pattern = re.compile(r"\/Date\((-?\d+)([\+\-]\d{4})?\)\/")
+
+    @property
+    def authenticator(self) -> XeroOAuth2Authenticator:
+        """Return authenticator instance."""
+        return XeroOAuth2Authenticator.create_for_stream(self)
+
+    @property
+    def http_headers(self) -> dict:
+        """Return headers for HTTP requests.
+
+        Returns:
+            Dictionary of HTTP headers.
+        """
+        headers = super().http_headers
+        headers["Xero-Tenant-Id"] = self.config["tenant_id"]
+        headers["Accept"] = "application/json"
+
+        user_agent = self.config.get("user_agent")
+        if user_agent:
+            headers["User-Agent"] = user_agent
+
+        return headers
+
+    def parse_dotnet_date(self, date_str: str) -> Optional[str]:
+        """Parse .NET JSON date format to RFC3339.
+
+        Xero returns dates in .NET format: /Date(1419937200000+0000)/
+        This converts to RFC3339: 2014-12-30T09:00:00.000000Z
+
+        Args:
+            date_str: Date string in .NET JSON format
+
+        Returns:
+            RFC3339 formatted date string or None
+        """
+        if not date_str or not isinstance(date_str, str):
+            return None
+
+        # Try .NET JSON date format
+        match = self._dotnet_date_pattern.match(date_str)
+        if match:
+            timestamp_ms = int(match.group(1))
+            # Convert milliseconds to seconds
+            timestamp = timestamp_ms / 1000.0
+
+            # Handle negative timestamps (dates before epoch)
+            if timestamp < 0:
+                timestamp = 0
+
+            dt = datetime.fromtimestamp(timestamp, tz=timezone.utc)
+            return dt.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+
+        # If already in ISO format, validate and return
+        try:
+            # Try to parse as ISO format
+            if "T" in date_str:
+                return date_str
+        except (ValueError, AttributeError):
+            pass
+
+        return None
+
+    def transform_dotnet_dates(self, record: dict) -> dict:
+        """Recursively transform all .NET dates in a record to RFC3339.
+
+        Args:
+            record: Dictionary record from API
+
+        Returns:
+            Record with transformed dates
+        """
+        if not isinstance(record, dict):
+            return record
+
+        transformed = {}
+        for key, value in record.items():
+            if isinstance(value, str) and "/Date(" in value:
+                transformed[key] = self.parse_dotnet_date(value)
+            elif isinstance(value, dict):
+                transformed[key] = self.transform_dotnet_dates(value)
+            elif isinstance(value, list):
+                transformed[key] = [
+                    self.transform_dotnet_dates(item) if isinstance(item, dict) else item
+                    for item in value
+                ]
+            else:
+                transformed[key] = value
+
+        return transformed
+
+    def backoff_wait_generator(self) -> Callable[..., Any]:
+        """Return backoff wait generator with custom logic for rate limits.
+
+        Returns:
+            Backoff wait generator function
+        """
+        return backoff.expo(base=2, factor=2, max_value=60)
+
+    def backoff_max_tries(self) -> int:
+        """Return max retry attempts.
+
+        Returns:
+            Maximum number of retry attempts
+        """
+        return 5
+
+    def validate_response(self, response: requests.Response) -> None:
+        """Validate HTTP response and raise appropriate exceptions.
+
+        Args:
+            response: HTTP response object
+
+        Raises:
+            XeroRateLimitError: For 429 rate limit errors
+            XeroAPIError: For other API errors
+        """
+        if response.status_code == 429:
+            # Check if this is a minute limit or daily limit
+            retry_after = response.headers.get("Retry-After")
+            error_msg = f"Rate limit exceeded (429). Retry-After: {retry_after}"
+
+            # Xero has both per-minute and daily rate limits
+            # If Retry-After is present, it's usually the per-minute limit
+            if retry_after:
+                self.logger.warning(
+                    f"Rate limit hit, will retry after {retry_after} seconds"
+                )
+                raise XeroRateLimitError(error_msg, response=response)
+            else:
+                # Daily limit - don't retry
+                raise XeroAPIError(
+                    "Daily API rate limit exceeded. Cannot retry.", response
+                )
+
+        elif response.status_code == 503:
+            raise RetriableAPIError(
+                "Service unavailable (503). Will retry.", response=response
+            )
+
+        elif response.status_code >= 500:
+            raise RetriableAPIError(
+                f"Server error ({response.status_code}). Will retry.",
+                response=response,
+            )
+
+        elif response.status_code == 401:
+            # OAuth token might need refresh
+            raise RetriableAPIError(
+                "Unauthorized (401). Token may need refresh.", response=response
+            )
+
+        elif response.status_code >= 400:
+            error_msg = f"Client error {response.status_code}"
+            try:
+                error_data = response.json()
+                if "Message" in error_data:
+                    error_msg += f": {error_data['Message']}"
+            except Exception:
+                error_msg += f": {response.text}"
+
+            raise XeroAPIError(error_msg, response)
+
+    def post_process(self, row: dict, context: Optional[dict] = None) -> Optional[dict]:
+        """Post-process each record, transforming dates.
+
+        Args:
+            row: Individual record from the API
+            context: Stream partition or context dictionary
+
+        Returns:
+            Transformed record
+        """
+        # Transform .NET dates to RFC3339
+        row = self.transform_dotnet_dates(row)
+        return row

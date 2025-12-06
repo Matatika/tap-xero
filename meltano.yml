@@ -1,0 +1,45 @@
+version: 1
+send_anonymous_usage_stats: true
+project_id: tap-xero
+
+plugins:
+  extractors:
+  - name: tap-xero
+    namespace: tap_xero
+    pip_url: -e .
+    capabilities:
+    - catalog
+    - state
+    - discover
+    settings:
+    - name: client_id
+      kind: password
+      label: Client ID
+      description: OAuth2 client ID for Xero application
+    - name: client_secret
+      kind: password
+      label: Client Secret
+      description: OAuth2 client secret for Xero application
+      sensitive: true
+    - name: tenant_id
+      kind: string
+      label: Tenant ID
+      description: Xero tenant/organisation ID
+    - name: refresh_token
+      kind: password
+      label: Refresh Token
+      description: OAuth2 refresh token (will be automatically updated during sync)
+      sensitive: true
+    - name: start_date
+      kind: date_iso8601
+      label: Start Date
+      description: Earliest record date to sync
+    - name: user_agent
+      kind: string
+      label: User Agent
+      description: Custom User-Agent header for API requests
+    - name: include_archived_contacts
+      kind: boolean
+      label: Include Archived Contacts
+      description: Include archived contacts in the contacts stream
+      value: false
