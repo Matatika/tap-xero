@@ -1,8 +1,10 @@
 """REST client for Xero API."""
 
 import re
+import sys
+from functools import cached_property
 from datetime import datetime, timezone
-from typing import Any, Callable, Dict, Iterable, Optional
+from typing import TYPE_CHECKING, Any, Callable, Optional
 
 import backoff
 import requests
@@ -10,9 +12,14 @@ from singer_sdk import typing as th
 from singer_sdk.exceptions import RetriableAPIError
 from singer_sdk.helpers.jsonpath import extract_jsonpath
 from singer_sdk.streams import RESTStream
+from singer_sdk.helpers.types import Auth
 
 from tap_xero.auth import XeroOAuth2Authenticator
 
+if sys.version_info >= (3, 12):
+    from typing import override
+else:
+    from typing_extensions import override
 
 class XeroAPIError(Exception):
     """Base exception for Xero API errors."""
@@ -37,10 +44,21 @@ class XeroStream(RESTStream):
     # Xero uses .NET JSON date format: /Date(1419937200000+0000)/
     _dotnet_date_pattern = re.compile(r"\/Date\((-?\d+)([\+\-]\d{4})?\)\/")
 
-    @property
-    def authenticator(self) -> XeroOAuth2Authenticator:
-        """Return authenticator instance."""
-        return XeroOAuth2Authenticator.create_for_stream(self)
+    @override
+    @cached_property
+    def authenticator(self) -> Auth:
+        """Return a new authenticator object.
+
+        Returns:
+            An authenticator instance.
+        """
+        return XeroOAuth2Authenticator(
+            client_id=self.config["client_id"],
+            client_secret=self.config["client_secret"],
+            refresh_token=self.config["refresh_token"],
+            auth_endpoint="https://identity.xero.com/connect/token",
+            oauth_scopes="offline_access accounting.transactions accounting.contacts accounting.settings",
+        )
 
     @property
     def http_headers(self) -> dict:
@@ -56,6 +74,11 @@ class XeroStream(RESTStream):
         user_agent = self.config.get("user_agent")
         if user_agent:
             headers["User-Agent"] = user_agent
+
+        starting_timestamp = self.get_starting_replication_key_value(self.context)
+        if starting_timestamp:
+            # Xero uses If-Modified-Since header to fetch only the changes since the last bookmark
+            headers["If-Modified-Since"] = starting_timestamp
 
         return headers
 

@@ -3,6 +3,7 @@
 from typing import Any, Dict, Iterable, Optional
 
 from singer_sdk import typing as th
+from singer_sdk.helpers.jsonpath import extract_jsonpath
 
 from tap_xero.client import XeroStream
 
@@ -35,14 +36,14 @@ class PaginatedStream(XeroStream):
             params["page"] = 1
 
         # Add replication key filter for incremental sync
-        starting_timestamp = self.get_starting_replication_key_value(context)
-        if starting_timestamp:
-            # Xero uses If-Modified-Since header or where clause
-            params["where"] = f'{self.replication_key}>DateTime({starting_timestamp.replace(":", "%3A")})'
+        #starting_timestamp = self.get_starting_replication_key_value(context)
+        #if starting_timestamp:
+        #    # Xero uses If-Modified-Since header or where clause
+        #    params["where"] = f'{self.replication_key}>DateTime({starting_timestamp.replace(":", "%3A")})'
 
         # Order by replication key (some streams don't support this due to Xero bugs)
-        if self.supports_order_by:
-            params["order"] = f"{self.replication_key} ASC"
+        #if self.supports_order_by:
+        #    params["order"] = f"{self.replication_key} ASC"
 
         return params
 
@@ -128,9 +129,9 @@ class BookmarkedStream(XeroStream):
         params: Dict[str, Any] = {}
 
         # Add replication key filter for incremental sync
-        starting_timestamp = self.get_starting_replication_key_value(context)
-        if starting_timestamp:
-            params["where"] = f'{self.replication_key}>DateTime({starting_timestamp.replace(":", "%3A")})'
+        #starting_timestamp = self.get_starting_replication_key_value(context)
+        #if starting_timestamp:
+        #    params["where"] = f'{self.replication_key}>DateTime({starting_timestamp.replace(":", "%3A")})'
 
         return params
 
