@@ -1,11 +1,16 @@
 """Xero tap class."""
 
-from typing import List
+import sys
 
 from singer_sdk import Stream, Tap
 from singer_sdk import typing as th
 
 from tap_xero import streams
+
+if sys.version_info >= (3, 12):
+    from typing import override
+else:
+    from typing_extensions import override
 
 
 class TapXero(Tap):
@@ -59,7 +64,8 @@ class TapXero(Tap):
         ),
     ).to_dict()
 
-    def discover_streams(self) -> List[Stream]:
+    @override
+    def discover_streams(self) -> list[Stream]:
         """Return a list of discovered streams.
 
         Returns:

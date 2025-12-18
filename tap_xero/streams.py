@@ -1,11 +1,25 @@
 """Stream classes for tap-xero."""
 
-from typing import Any, Dict, Iterable, Optional
+from __future__ import annotations
+
+import sys
+from typing import TYPE_CHECKING, Any
 
 from singer_sdk import typing as th
 from singer_sdk.helpers.jsonpath import extract_jsonpath
 
 from tap_xero.client import XeroStream
+
+if sys.version_info >= (3, 12):
+    from typing import override
+else:
+    from typing_extensions import override
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
+
+    import requests
+    from singer_sdk.helpers.types import Context
 
 
 class PaginatedStream(XeroStream):
@@ -15,9 +29,12 @@ class PaginatedStream(XeroStream):
     page_size = 100
 
     # Xero pagination uses 1-based page numbers
+    @override
     def get_url_params(
-        self, context: Optional[dict], next_page_token: Optional[Any]
-    ) -> Dict[str, Any]:
+        self,
+        context: Context | None,
+        next_page_token: Any | None,
+    ) -> dict[str, Any]:
         """Get URL query parameters.
 
         Args:
@@ -27,7 +44,7 @@ class PaginatedStream(XeroStream):
         Returns:
             Dictionary of query parameters
         """
-        params: Dict[str, Any] = {}
+        params: dict[str, Any] = {}
 
         # Add pagination
         if next_page_token:
@@ -36,13 +53,13 @@ class PaginatedStream(XeroStream):
             params["page"] = 1
 
         # Add replication key filter for incremental sync
-        #starting_timestamp = self.get_starting_replication_key_value(context)
-        #if starting_timestamp:
+        # starting_timestamp = self.get_starting_replication_key_value(context)
+        # if starting_timestamp:
         #    # Xero uses If-Modified-Since header or where clause
         #    params["where"] = f'{self.replication_key}>DateTime({starting_timestamp.replace(":", "%3A")})'
 
         # Order by replication key (some streams don't support this due to Xero bugs)
-        #if self.supports_order_by:
+        # if self.supports_order_by:
         #    params["order"] = f"{self.replication_key} ASC"
 
         return params
@@ -58,9 +75,7 @@ class PaginatedStream(XeroStream):
         """
         return True
 
-    def get_next_page_token(
-        self, response: Any, previous_token: Optional[Any]
-    ) -> Optional[Any]:
+    def get_next_page_token(self, response: Any, previous_token: Any | None) -> Any | None:
         """Get next page token.
 
         Args:
@@ -105,8 +120,7 @@ class PaginatedStream(XeroStream):
         data = response.json()
 
         # Extract records using the records_jsonpath
-        for record in extract_jsonpath(self.records_jsonpath, data):
-            yield record
+        yield from extract_jsonpath(self.records_jsonpath, data)
 
 
 class BookmarkedStream(XeroStream):
@@ -114,9 +128,12 @@ class BookmarkedStream(XeroStream):
 
     replication_key = "UpdatedDateUTC"
 
+    @override
     def get_url_params(
-        self, context: Optional[dict], next_page_token: Optional[Any]
-    ) -> Dict[str, Any]:
+        self,
+        context: Context | None,
+        next_page_token: Any | None,
+    ) -> dict[str, Any]:
         """Get URL query parameters.
 
         Args:
@@ -126,11 +143,11 @@ class BookmarkedStream(XeroStream):
         Returns:
             Dictionary of query parameters
         """
-        params: Dict[str, Any] = {}
+        params: dict[str, Any] = {}
 
         # Add replication key filter for incremental sync
-        #starting_timestamp = self.get_starting_replication_key_value(context)
-        #if starting_timestamp:
+        # starting_timestamp = self.get_starting_replication_key_value(context)
+        # if starting_timestamp:
         #    params["where"] = f'{self.replication_key}>DateTime({starting_timestamp.replace(":", "%3A")})'
 
         return params
@@ -156,8 +173,7 @@ class BookmarkedStream(XeroStream):
         """
         data = response.json()
 
-        for record in extract_jsonpath(self.records_jsonpath, data):
-            yield record
+        yield from extract_jsonpath(self.records_jsonpath, data)
 
 
 class FullTableStream(XeroStream):
@@ -184,8 +200,7 @@ class FullTableStream(XeroStream):
         """
         data = response.json()
 
-        for record in extract_jsonpath(self.records_jsonpath, data):
-            yield record
+        yield from extract_jsonpath(self.records_jsonpath, data)
 
 
 # Paginated Streams (10)
@@ -251,9 +266,12 @@ class ContactsStream(PaginatedStream):
         th.Property("HasAttachments", th.BooleanType),
     ).to_dict()
 
+    @override
     def get_url_params(
-        self, context: Optional[dict], next_page_token: Optional[Any]
-    ) -> Dict[str, Any]:
+        self,
+        context: Context | None,
+        next_page_token: Any | None,
+    ) -> dict[str, Any]:
         """Get URL query parameters including archived contacts if configured.
 
         Args:
@@ -550,9 +568,12 @@ class JournalsStream(XeroStream):
         th.Property("JournalLines", th.ArrayType(th.ObjectType())),
     ).to_dict()
 
+    @override
     def get_url_params(
-        self, context: Optional[dict], next_page_token: Optional[Any]
-    ) -> Dict[str, Any]:
+        self,
+        context: Context | None,
+        next_page_token: Any | None,
+    ) -> dict[str, Any]:
         """Get URL query parameters.
 
         Args:
@@ -562,7 +583,7 @@ class JournalsStream(XeroStream):
         Returns:
             Dictionary of query parameters
         """
-        params: Dict[str, Any] = {}
+        params: dict[str, Any] = {}
 
         # Journals use offset parameter with journal number
         starting_journal_number = self.get_starting_replication_key_value(context)
@@ -574,8 +595,10 @@ class JournalsStream(XeroStream):
         return params
 
     def get_next_page_token(
-        self, response: Any, previous_token: Optional[Any]
-    ) -> Optional[Any]:
+        self,
+        response: requests.Response,
+        previous_token: Any | None,  # noqa: ARG002
+    ) -> Any | None:
         """Get next page token based on journal numbers.
 
         Args:
@@ -590,11 +613,11 @@ class JournalsStream(XeroStream):
 
         if journals:
             # Return the highest journal number seen
-            max_journal_num = max(j.get("JournalNumber", 0) for j in journals)
-            return max_journal_num
+            return max(j.get("JournalNumber", 0) for j in journals)
 
         return None
 
+    @override
     def parse_response(self, response: Any) -> Iterable[dict]:
         """Parse the response and yield records.
 
@@ -606,8 +629,7 @@ class JournalsStream(XeroStream):
         """
         data = response.json()
 
-        for record in data.get("Journals", []):
-            yield record
+        yield from data.get("Journals", [])
 
 
 # Bookmarked Streams (7)
