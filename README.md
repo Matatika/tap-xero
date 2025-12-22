@@ -201,25 +201,25 @@ By default, the tap excludes archived contacts. Set `include_archived_contacts: 
 ### Running Tests
 
 ```bash
-pytest
+poetry run pytest
 ```
 
 ### Code Formatting
 
 ```bash
-black tap_xero/
+poetry run ruff format tap_xero/
 ```
 
 ### Type Checking
 
 ```bash
-mypy tap_xero/
+poetry run mypy tap_xero/
 ```
 
 ### Linting
 
 ```bash
-flake8 tap_xero/
+poetry run ruff check tap_xero/
 ```
 
 ## Migration from tap-xero v2.x

@@ -2,20 +2,19 @@
 
 import base64
 import sys
-from typing import Optional
 
-import requests
 from singer_sdk.authenticators import OAuthAuthenticator, SingletonMeta
-from singer_sdk.streams import Stream as RESTStreamBase
 
 if sys.version_info >= (3, 12):
     from typing import override
 else:
     from typing_extensions import override
 
+
 class XeroOAuth2Authenticator(OAuthAuthenticator, metaclass=SingletonMeta):
     """Authenticator class for Xero OAuth2 flow."""
 
+    @override
     def __init__(
         self,
         client_id: str,
@@ -43,7 +42,7 @@ class XeroOAuth2Authenticator(OAuthAuthenticator, metaclass=SingletonMeta):
         self._refresh_token = refresh_token
 
     @property
-    def oauth_request_headers(self) -> dict:
+    def oauth_request_headers(self) -> dict[str, str]:
         """Return headers for OAuth token request.
 
         Uses Basic auth with base64 encoded client_id:client_secret.
