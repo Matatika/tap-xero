@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Replace Black and flake8 with Ruff
 - Migrate project to use PEP 621
 
+## [4.0.0] - 2025-12-22
+
+### Breaking Changes
+
+- **Configuration schema changed to nested structure with `oauth_credentials` object**
+
+  All OAuth settings now nested under `oauth_credentials`:
+  - `oauth_credentials.client_id`
+  - `oauth_credentials.client_secret`
+  - `oauth_credentials.refresh_token`
+  - `oauth_credentials.refresh_proxy_url` (new)
+  - `oauth_credentials.refresh_proxy_url_auth` (new)
+
 ## [3.0.0] - 2025-12-05
 
 ### Changed

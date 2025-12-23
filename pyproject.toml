@@ -1,6 +1,6 @@
 [project]
 name = "tap-xero"
-version = "3.0.0"
+version = "4.0.0"
 description = "Singer tap for Xero, built with the Meltano Singer SDK"
 authors = [ { name = "Matatika" } ]
 license = "Apache-2.0"
@@ -34,6 +34,7 @@ repository = "https://github.com/Matatika/tap-xero"
 dev = [
     "mypy>=1.19",
     "pytest>=9",
+    "responses>=0.25.0",
     "ruff>=0.14.9",
     "ty>=0.0.2",
     "types-requests>=2.31.0",

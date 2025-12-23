@@ -13,7 +13,7 @@ import backoff
 from singer_sdk.exceptions import RetriableAPIError
 from singer_sdk.streams import RESTStream
 
-from tap_xero.auth import XeroOAuth2Authenticator
+from tap_xero.auth import ProxyXeroOAuth2Authenticator, XeroOAuth2Authenticator
 
 if TYPE_CHECKING:
     from collections.abc import Generator
@@ -54,16 +54,56 @@ class XeroStream(RESTStream):
     def authenticator(self) -> Auth:
         """Return a new authenticator object.
 
+        Determines whether to use standard OAuth or proxy OAuth based on
+        the oauth_credentials configuration.
+
         Returns:
-            An authenticator instance.
+            An authenticator instance (either standard or proxy).
         """
-        return XeroOAuth2Authenticator(
-            client_id=self.config["client_id"],
-            client_secret=self.config["client_secret"],
-            refresh_token=self.config["refresh_token"],
-            auth_endpoint="https://identity.xero.com/connect/token",
-            oauth_scopes="offline_access accounting.transactions accounting.contacts accounting.settings",
+        oauth_credentials = self.config["oauth_credentials"]
+
+        # Check for standard OAuth credentials (client_id + client_secret)
+        client_id = oauth_credentials.get("client_id")
+        client_secret = oauth_credentials.get("client_secret")
+
+        if client_id and client_secret:
+            # Standard OAuth mode
+            return XeroOAuth2Authenticator(
+                client_id=client_id,
+                client_secret=client_secret,
+                refresh_token=oauth_credentials["refresh_token"],
+                auth_endpoint="https://identity.xero.com/connect/token",
+                oauth_scopes="offline_access accounting.transactions accounting.contacts accounting.settings",
+            )
+
+        # Check for proxy OAuth credentials (refresh_proxy_url)
+        refresh_proxy_url = oauth_credentials.get("refresh_proxy_url")
+
+        if refresh_proxy_url:
+            # Proxy OAuth mode
+            auth_headers = {
+                "authorization": oauth_credentials.get("refresh_proxy_url_auth", ""),
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+            }
+            auth_body = {
+                "refresh_token": oauth_credentials["refresh_token"],
+                "grant_type": "refresh_token",
+            }
+            return ProxyXeroOAuth2Authenticator(
+                auth_endpoint=refresh_proxy_url,
+                oauth_scopes="offline_access accounting.transactions accounting.contacts accounting.settings",
+                auth_headers=auth_headers,
+                auth_body=auth_body,
+            )
+
+        # If neither mode is configured, raise error
+        msg = (
+            "OAuth configuration invalid. Provide either:\n"
+            "  1. oauth_credentials with client_id, client_secret, and refresh_token (standard OAuth), or\n"
+            "  2. oauth_credentials with refresh_proxy_url and refresh_token (proxy OAuth)"
         )
+        raise ValueError(msg)
 
     @override
     @property
