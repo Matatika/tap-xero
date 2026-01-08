@@ -20,30 +20,62 @@ class TapXero(Tap):
 
     config_jsonschema = th.PropertiesList(
         th.Property(
-            "client_id",
-            th.StringType,
+            "oauth_credentials",
+            th.OneOf(
+                # Standard OAuth mode
+                th.ObjectType(
+                    th.Property(
+                        "client_id",
+                        th.StringType,
+                        required=True,
+                        description="OAuth2 client ID for Xero application",
+                    ),
+                    th.Property(
+                        "client_secret",
+                        th.StringType,
+                        required=True,
+                        secret=True,
+                        description="OAuth2 client secret for Xero application",
+                    ),
+                    th.Property(
+                        "refresh_token",
+                        th.StringType,
+                        required=True,
+                        secret=True,
+                        description="OAuth2 refresh token (will be automatically updated during sync)",
+                    ),
+                ),
+                # Proxy OAuth mode
+                th.ObjectType(
+                    th.Property(
+                        "refresh_proxy_url",
+                        th.StringType,
+                        required=True,
+                        description="Proxy URL for OAuth token refresh",
+                    ),
+                    th.Property(
+                        "refresh_proxy_url_auth",
+                        th.StringType,
+                        secret=True,
+                        description="Authorization header value for proxy OAuth requests",
+                    ),
+                    th.Property(
+                        "refresh_token",
+                        th.StringType,
+                        required=True,
+                        secret=True,
+                        description="OAuth2 refresh token",
+                    ),
+                ),
+            ),
             required=True,
-            description="OAuth2 client ID for Xero application",
-        ),
-        th.Property(
-            "client_secret",
-            th.StringType,
-            required=True,
-            secret=True,
-            description="OAuth2 client secret for Xero application",
+            description="OAuth credentials (either standard or proxy mode)",
         ),
         th.Property(
             "tenant_id",
             th.StringType,
             required=True,
             description="Xero tenant/organisation ID",
-        ),
-        th.Property(
-            "refresh_token",
-            th.StringType,
-            required=True,
-            secret=True,
-            description="OAuth2 refresh token (will be automatically updated during sync)",
         ),
         th.Property(
             "start_date",

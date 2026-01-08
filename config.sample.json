@@ -1,9 +1,11 @@
 {
-  "client_id": "YOUR_XERO_CLIENT_ID",
-  "client_secret": "YOUR_XERO_CLIENT_SECRET",
+  "oauth_credentials": {
+    "client_id": "YOUR_XERO_CLIENT_ID",
+    "client_secret": "YOUR_XERO_CLIENT_SECRET",
+    "refresh_token": "YOUR_XERO_REFRESH_TOKEN"
+  },
   "tenant_id": "YOUR_XERO_TENANT_ID",
-  "refresh_token": "YOUR_XERO_REFRESH_TOKEN",
   "start_date": "2020-01-01T00:00:00Z",
-  "user_agent": "tap-xero/3.0.0",
+  "user_agent": "tap-xero/4.0.0",
   "include_archived_contacts": false
 }

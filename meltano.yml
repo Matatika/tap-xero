@@ -12,24 +12,35 @@ plugins:
     - state
     - discover
     settings:
-    - name: client_id
+    - name: oauth_credentials.client_id
       kind: password
       label: Client ID
       description: OAuth2 client ID for Xero application
-    - name: client_secret
+    - name: oauth_credentials.client_secret
       kind: password
       label: Client Secret
       description: OAuth2 client secret for Xero application
       sensitive: true
-    - name: tenant_id
-      kind: string
-      label: Tenant ID
-      description: Xero tenant/organisation ID
-    - name: refresh_token
+    - name: oauth_credentials.refresh_token
       kind: password
       label: Refresh Token
       description: OAuth2 refresh token (will be automatically updated during sync)
       sensitive: true
+    - name: oauth_credentials.refresh_proxy_url
+      kind: string
+      label: Refresh Proxy URL
+      description: Optional - will be called with refresh_token to refresh the access token
+      hidden: true
+    - name: oauth_credentials.refresh_proxy_url_auth
+      kind: password
+      label: Refresh Proxy URL Auth
+      description: Optional - Sets Authorization header on refresh_proxy_url request
+      sensitive: true
+      hidden: true
+    - name: tenant_id
+      kind: string
+      label: Tenant ID
+      description: Xero tenant/organisation ID
     - name: start_date
       kind: date_iso8601
       label: Start Date

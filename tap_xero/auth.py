@@ -1,6 +1,7 @@
 """OAuth2 authenticator for Xero API."""
 
 import base64
+import json
 import sys
 
 from singer_sdk.authenticators import OAuthAuthenticator, SingletonMeta
@@ -9,6 +10,9 @@ if sys.version_info >= (3, 12):
     from typing import override
 else:
     from typing_extensions import override
+
+ENDPOINT = "https://identity.xero.com/connect/token"
+SCOPES = "offline_access accounting.transactions accounting.contacts accounting.settings"
 
 
 class XeroOAuth2Authenticator(OAuthAuthenticator, metaclass=SingletonMeta):
@@ -20,8 +24,6 @@ class XeroOAuth2Authenticator(OAuthAuthenticator, metaclass=SingletonMeta):
         client_id: str,
         client_secret: str,
         refresh_token: str,
-        auth_endpoint: str,
-        oauth_scopes: str,
     ) -> None:
         """Initialize the authenticator.
 
@@ -29,14 +31,13 @@ class XeroOAuth2Authenticator(OAuthAuthenticator, metaclass=SingletonMeta):
             client_id: OAuth2 client ID.
             client_secret: OAuth2 client secret.
             refresh_token: OAuth2 refresh token.
-            auth_endpoint: OAuth2 token endpoint URL.
             oauth_scopes: OAuth scopes.
         """
         super().__init__(
             client_id=client_id,
             client_secret=client_secret,
-            auth_endpoint=auth_endpoint,
-            oauth_scopes=oauth_scopes,
+            auth_endpoint=ENDPOINT,
+            oauth_scopes=SCOPES,
         )
         self._oauth_headers = self.oauth_request_headers
         self._refresh_token = refresh_token
@@ -72,3 +73,46 @@ class XeroOAuth2Authenticator(OAuthAuthenticator, metaclass=SingletonMeta):
             "grant_type": "refresh_token",
             "refresh_token": self._refresh_token,
         }
+
+
+class ProxyXeroOAuth2Authenticator(OAuthAuthenticator, metaclass=SingletonMeta):
+    """Authenticator for Xero Proxy OAuth 2.0 flows."""
+
+    @override
+    def __init__(
+        self,
+        *,
+        refresh_token: str,
+        proxy_auth: str | None = None,
+        auth_endpoint: str,
+    ) -> None:
+        """Initialize the proxy authenticator.
+
+        Args:
+            refresh_token: OAuth2 refresh token.
+            proxy_auth: Authorization header value for proxy OAuth requests.
+            kwargs: Additional keyword arguments for the authenticator.
+        """
+        super().__init__(refresh_token=refresh_token, auth_endpoint=auth_endpoint)
+        self._refresh_token = refresh_token
+        self._proxy_auth = proxy_auth
+        self._oauth_headers = self.oauth_request_headers
+
+    @property
+    def oauth_request_headers(self) -> dict[str, str]:
+        headers: dict[str, str] = {"Content-Type": "application/json"}
+
+        if self._proxy_auth:
+            headers["Authorization"] = self._proxy_auth
+
+        return headers
+
+    @override
+    @property
+    def oauth_request_body(self) -> str:  # type: ignore[override]
+        return json.dumps(
+            {
+                "refresh_token": self._refresh_token,
+                "grant_type": "refresh_token",
+            },
+        )

@@ -103,6 +103,64 @@ Create a `config.json` file:
 }
 ```
 
+### Proxy OAuth Configuration
+
+For enterprise environments using an OAuth proxy (such as the Matatika platform), tap-xero supports proxy-based OAuth refresh. This allows centralized OAuth credential management at the platform level.
+
+#### Proxy OAuth Config Example
+
+```json
+{
+  "oauth_credentials": {
+    "refresh_proxy_url": "https://your-proxy.example.com/api/oauth/xero/token",
+    "refresh_proxy_url_auth": "Bearer your-proxy-auth-token",
+    "refresh_token": "your-refresh-token"
+  },
+  "tenant_id": "YOUR_XERO_TENANT_ID",
+  "start_date": "2020-01-01T00:00:00Z"
+}
+```
+
+#### Configuration Options
+
+- **oauth_credentials.refresh_proxy_url**: The proxy endpoint URL for token refresh
+- **oauth_credentials.refresh_proxy_url_auth**: Authorization header value for proxy requests
+- **oauth_credentials.refresh_token**: Your Xero refresh token
+
+The tap will automatically use proxy OAuth mode when `client_id` and `client_secret` are not provided. Standard OAuth configuration (with `client_id` and `client_secret`) continues to work as before.
+
+#### Proxy Endpoint Requirements
+
+Your proxy endpoint must:
+
+1. Accept POST requests with JSON body containing `refresh_token` and `grant_type`
+2. Accept authorization via the header specified in `refresh_proxy_url_auth`
+3. Return a JSON response with `access_token` and `expires_in` fields
+4. Handle the actual OAuth flow with Xero's identity service
+
+**Example Proxy Request:**
+
+```http
+POST https://your-proxy.example.com/api/oauth/xero/token
+Authorization: Bearer your-proxy-auth-token
+Content-Type: application/json
+
+{
+  "refresh_token": "your-refresh-token",
+  "grant_type": "refresh_token"
+}
+```
+
+**Example Proxy Response:**
+
+```json
+{
+  "access_token": "new-access-token",
+  "expires_in": 1800,
+  "token_type": "Bearer"
+}
+```
+
 ## Getting Xero Credentials
 
 1. **Create a Xero App**:

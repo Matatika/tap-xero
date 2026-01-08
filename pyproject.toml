@@ -34,6 +34,7 @@ repository = "https://github.com/Matatika/tap-xero"
 dev = [
     "mypy>=1.19",
     "pytest>=9",
+    "responses>=0.25.0",
     "ruff>=0.14.9",
     "ty>=0.0.2",
     "types-requests>=2.31.0",
