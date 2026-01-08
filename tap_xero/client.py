@@ -60,41 +60,27 @@ class XeroStream(RESTStream):
         Returns:
             An authenticator instance (either standard or proxy).
         """
-        oauth_credentials = self.config["oauth_credentials"]
+        oauth_credentials: dict[str, Any] = self.config["oauth_credentials"]
 
         # Check for standard OAuth credentials (client_id + client_secret)
-        client_id = oauth_credentials.get("client_id")
-        client_secret = oauth_credentials.get("client_secret")
-
-        if client_id and client_secret:
+        if (
+            (client_id := oauth_credentials.get("client_id"))  # Client ID is set
+            and (client_secret := oauth_credentials.get("client_secret"))  # Client secret is set
+        ):
             # Standard OAuth mode
             return XeroOAuth2Authenticator(
                 client_id=client_id,
                 client_secret=client_secret,
                 refresh_token=oauth_credentials["refresh_token"],
-                auth_endpoint="https://identity.xero.com/connect/token",
-                oauth_scopes="offline_access accounting.transactions accounting.contacts accounting.settings",
             )
 
         # Check for proxy OAuth credentials (refresh_proxy_url)
-        refresh_proxy_url = oauth_credentials.get("refresh_proxy_url")
-
-        if refresh_proxy_url:
+        if refresh_proxy_url := oauth_credentials.get("refresh_proxy_url"):
             # Proxy OAuth mode
-            auth_headers = {
-                "authorization": oauth_credentials.get("refresh_proxy_url_auth", ""),
-                "Content-Type": "application/json",
-                "Accept": "application/json",
-            }
-            auth_body = {
-                "refresh_token": oauth_credentials["refresh_token"],
-                "grant_type": "refresh_token",
-            }
             return ProxyXeroOAuth2Authenticator(
+                refresh_token=oauth_credentials["refresh_token"],
+                proxy_auth=oauth_credentials.get("refresh_proxy_url_auth"),
                 auth_endpoint=refresh_proxy_url,
-                oauth_scopes="offline_access accounting.transactions accounting.contacts accounting.settings",
-                auth_headers=auth_headers,
-                auth_body=auth_body,
             )
 
         # If neither mode is configured, raise error
