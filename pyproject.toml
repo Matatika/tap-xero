@@ -1,6 +1,6 @@
 [project]
 name = "tap-xero"
-version = "4.0.0"
+version = "3.0.0"
 description = "Singer tap for Xero, built with the Meltano Singer SDK"
 authors = [ { name = "Matatika" } ]
 license = "Apache-2.0"
