@@ -556,6 +556,9 @@ class JournalsStream(XeroStream):
     path = "/Journals"
     primary_keys = ["JournalID"]
     replication_key = "JournalNumber"
+    records_jsonpath = "$.Journals[*]"
+
+    is_sorted = True
 
     schema = th.PropertiesList(
         th.Property("JournalID", th.StringType),
@@ -572,7 +575,7 @@ class JournalsStream(XeroStream):
     def get_url_params(
         self,
         context: Context | None,
-        next_page_token: Any | None,
+        next_page_token: int | None,
     ) -> dict[str, Any]:
         """Get URL query parameters.
 
@@ -586,13 +589,22 @@ class JournalsStream(XeroStream):
         params: dict[str, Any] = {}
 
         # Journals use offset parameter with journal number
-        starting_journal_number = self.get_starting_replication_key_value(context)
-        if starting_journal_number:
-            params["offset"] = starting_journal_number
-        elif next_page_token:
+        starting_journal_number: int | None
+        if next_page_token:
             params["offset"] = next_page_token
+        elif starting_journal_number := self.get_starting_replication_key_value(context):
+            params["offset"] = starting_journal_number
 
         return params
+
+    @override
+    @property
+    def http_headers(self) -> dict[str, str]:
+        """Return headers for HTTP requests."""
+        headers = super().http_headers
+        # The replication key is the journal number, so we don't need to use the If-Modified-Since header.
+        headers.pop("If-Modified-Since", None)
+        return headers
 
     def get_next_page_token(
         self,
@@ -609,27 +621,12 @@ class JournalsStream(XeroStream):
             Next journal number or None
         """
         data = response.json()
-        journals = data.get("Journals", [])
-
-        if journals:
+        journals: list[dict]
+        if journals := data.get("Journals"):
             # Return the highest journal number seen
-            return max(j.get("JournalNumber", 0) for j in journals)
+            return journals[-1]["JournalNumber"]
 
         return None
-
-    @override
-    def parse_response(self, response: Any) -> Iterable[dict]:
-        """Parse the response and yield records.
-
-        Args:
-            response: HTTP response
-
-        Yields:
-            Individual records from the API
-        """
-        data = response.json()
-
-        yield from data.get("Journals", [])
 
 
 # Bookmarked Streams (7)
