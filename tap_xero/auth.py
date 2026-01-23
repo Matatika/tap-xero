@@ -39,8 +39,8 @@ class XeroOAuth2Authenticator(OAuthAuthenticator, metaclass=SingletonMeta):
             auth_endpoint=ENDPOINT,
             oauth_scopes=SCOPES,
         )
+        self.refresh_token = refresh_token
         self._oauth_headers = self.oauth_request_headers
-        self._refresh_token = refresh_token
 
     @property
     def oauth_request_headers(self) -> dict[str, str]:
@@ -64,14 +64,14 @@ class XeroOAuth2Authenticator(OAuthAuthenticator, metaclass=SingletonMeta):
     @override
     @property
     def oauth_request_body(self) -> dict:
-        """Define the OAuth request body for the QuickBooks API.
+        """Define the OAuth request body for the Xero API.
 
         Returns:
             A dict with the request body
         """
         return {
             "grant_type": "refresh_token",
-            "refresh_token": self._refresh_token,
+            "refresh_token": self.refresh_token,
         }
 
 
@@ -93,8 +93,8 @@ class ProxyXeroOAuth2Authenticator(OAuthAuthenticator, metaclass=SingletonMeta):
             proxy_auth: Authorization header value for proxy OAuth requests.
             kwargs: Additional keyword arguments for the authenticator.
         """
-        super().__init__(refresh_token=refresh_token, auth_endpoint=auth_endpoint)
-        self._refresh_token = refresh_token
+        super().__init__(auth_endpoint=auth_endpoint)
+        self.refresh_token = refresh_token
         self._proxy_auth = proxy_auth
         self._oauth_headers = self.oauth_request_headers
 
@@ -112,7 +112,7 @@ class ProxyXeroOAuth2Authenticator(OAuthAuthenticator, metaclass=SingletonMeta):
     def oauth_request_body(self) -> str:  # type: ignore[override]
         return json.dumps(
             {
-                "refresh_token": self._refresh_token,
+                "refresh_token": self.refresh_token,
                 "grant_type": "refresh_token",
             },
         )
