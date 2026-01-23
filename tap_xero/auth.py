@@ -12,7 +12,6 @@ else:
     from typing_extensions import override
 
 ENDPOINT = "https://identity.xero.com/connect/token"
-SCOPES = "offline_access accounting.transactions accounting.contacts accounting.settings"
 
 
 class XeroOAuth2Authenticator(OAuthAuthenticator, metaclass=SingletonMeta):
@@ -37,7 +36,6 @@ class XeroOAuth2Authenticator(OAuthAuthenticator, metaclass=SingletonMeta):
             client_id=client_id,
             client_secret=client_secret,
             auth_endpoint=ENDPOINT,
-            oauth_scopes=SCOPES,
         )
         self.refresh_token = refresh_token
         self._oauth_headers = self.oauth_request_headers
