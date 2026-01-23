@@ -1,12 +1,17 @@
 [project]
 name = "tap-xero"
-version = "3.0.0"
+dynamic = [ "version" ]
 description = "Singer tap for Xero, built with the Meltano Singer SDK"
-authors = [ { name = "Matatika" } ]
-license = "Apache-2.0"
-readme = "README.md"
-keywords = ["Xero", "Singer", "Meltano", "ELT"]
+authors = [{ name = "Matatika" }]
 requires-python = ">=3.10"
+readme = "README.md"
+license = "Apache-2.0"
+keywords = [
+    "Xero",
+    "Singer",
+    "Meltano",
+    "ELT",
+]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
@@ -20,15 +25,22 @@ classifiers = [
 dependencies = [
     "requests~=2.32.0",
     "singer-sdk~=0.53.4",
-    "typing-extensions~=4.15.0 ; python_version < \"3.12\"",
+    'typing-extensions~=4.15.0 ; python_version < "3.12"',
 ]
-
-[project.scripts]
-tap-xero = "tap_xero.tap:TapXero.cli"
 
 [project.urls]
 homepage = "https://github.com/Matatika/tap-xero"
 repository = "https://github.com/Matatika/tap-xero"
+
+[project.scripts]
+tap-xero = "tap_xero.tap:TapXero.cli"
+
+[build-system]
+requires = [
+    "hatchling>=1,<2",
+    "hatch-vcs>=0.5.0",
+]
+build-backend = "hatchling.build"
 
 [dependency-groups]
 dev = [
@@ -40,16 +52,12 @@ dev = [
     "types-requests>=2.31.0",
 ]
 
-[tool.poetry]
-requires-poetry = ">=2.2"
-
-[build-system]
-requires = ["poetry-core>=2.2,<3"]
-build-backend = "poetry.core.masonry.api"
+[tool.hatch.version]
+fallback-version = "0.0.0.dev0"
+source = "vcs"
 
 [tool.ruff]
 line-length = 100
-target-version = "py310"
 
 [tool.ruff.lint]
 extend-select = [

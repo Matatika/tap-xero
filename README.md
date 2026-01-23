@@ -60,16 +60,15 @@ pip install tap-xero
 
 ### For Development
 
+Requirements:
+
+- git
+- [uv](https://docs.astral.sh/uv/getting-started/installation/)
+
 ```bash
 git clone https://github.com/Matatika/tap-xero
 cd tap-xero
-pip install -e .
-```
-
-### Using Poetry
-
-```bash
-poetry install
+uv sync
 ```
 
 ## Configuration
@@ -259,25 +258,25 @@ By default, the tap excludes archived contacts. Set `include_archived_contacts: 
 ### Running Tests
 
 ```bash
-poetry run pytest
+uv run pytest
 ```
 
 ### Code Formatting
 
 ```bash
-poetry run ruff format tap_xero/
+uv run ruff format tap_xero/
 ```
 
 ### Type Checking
 
 ```bash
-poetry run mypy tap_xero/
+uv run mypy tap_xero/
 ```
 
 ### Linting
 
 ```bash
-poetry run ruff check tap_xero/
+uv run ruff check tap_xero/
 ```
 
 ## Migration from tap-xero v2.x
