@@ -9,7 +9,6 @@ from datetime import datetime, timezone
 from functools import cached_property
 from typing import TYPE_CHECKING, Any
 
-import backoff
 from singer_sdk.exceptions import RetriableAPIError
 from singer_sdk.streams import RESTStream
 
@@ -178,7 +177,15 @@ class XeroStream(RESTStream):
         Returns:
             Backoff wait generator function
         """
-        return backoff.expo(base=2, factor=2, max_value=60)
+
+        def _backoff_from_headers(error: Exception):
+            if isinstance(error, RetriableAPIError) and error.response is not None:
+                response_headers = error.response.headers
+                return int(response_headers.get("Retry-After", 5))
+
+            return 5
+
+        return self.backoff_runtime(value=_backoff_from_headers)
 
     @override
     def backoff_max_tries(self) -> int:
@@ -200,14 +207,27 @@ class XeroStream(RESTStream):
             XeroRateLimitError: For 429 rate limit errors
             XeroAPIError: For other API errors
         """
+        # https://developer.xero.com/documentation/guides/oauth2/limits/#api-rate-limits
         if response.status_code == 429:
             # If Retry-After is present, it's usually the per-minute limit
+            message = response.headers.get("X-Rate-Limit-Problem", "Rate limit hit")
+            daily_calls_remaining = response.headers.get("X-DayLimit-Remaining", "?")
+            per_minute_calls_remaining = response.headers.get("X-MinLimit-Remaining", "?")
+            app_per_minute_calls_remaining = response.headers.get("X-AppMinLimit-Remaining", "?")
+
             if retry_after := response.headers.get("Retry-After"):
-                self.logger.warning(f"Rate limit hit, will retry after {retry_after} seconds")
-                error_msg = f"Rate limit exceeded (429). Retry-After: {retry_after}"
+                self.logger.warning(
+                    "%s, will retry after %s seconds. Daily calls remaining: %s, per minute calls remaining: %s, app per minute calls remaining: %s",
+                    message,
+                    retry_after,
+                    daily_calls_remaining,
+                    per_minute_calls_remaining,
+                    app_per_minute_calls_remaining,
+                )
+                error_msg = f"{message}. Retry-After: {retry_after}"
                 raise XeroRateLimitError(error_msg, response=response)
             # Daily limit - don't retry
-            raise XeroAPIError("Daily API rate limit exceeded. Cannot retry.", response)
+            raise XeroAPIError(f"{message}. Cannot retry.", response)
 
         if response.status_code == 503:
             raise RetriableAPIError("Service unavailable (503). Will retry.", response=response)
