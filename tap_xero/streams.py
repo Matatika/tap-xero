@@ -6,7 +6,6 @@ import sys
 from typing import TYPE_CHECKING, Any
 
 from singer_sdk import typing as th
-from singer_sdk.helpers.jsonpath import extract_jsonpath
 
 from tap_xero.client import XeroStream
 
@@ -16,8 +15,6 @@ else:
     from typing_extensions import override
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
-
     import requests
     from singer_sdk.helpers.types import Context
 
@@ -97,31 +94,6 @@ class PaginatedStream(XeroStream):
 
         return None
 
-    @property
-    def records_jsonpath(self) -> str:
-        """JSONPath to extract records from API response.
-
-        Returns:
-            JSONPath expression
-        """
-        # Most Xero endpoints return {StreamName: [...]}
-        stream_name = self.name.replace("_", "")
-        return f"{stream_name}[*]"
-
-    def parse_response(self, response: Any) -> Iterable[dict]:
-        """Parse the response and yield records.
-
-        Args:
-            response: HTTP response
-
-        Yields:
-            Individual records from the API
-        """
-        data = response.json()
-
-        # Extract records using the records_jsonpath
-        yield from extract_jsonpath(self.records_jsonpath, data)
-
 
 class BookmarkedStream(XeroStream):
     """Base class for non-paginated streams that support Modified-After."""
@@ -152,55 +124,11 @@ class BookmarkedStream(XeroStream):
 
         return params
 
-    @property
-    def records_jsonpath(self) -> str:
-        """JSONPath to extract records from API response.
-
-        Returns:
-            JSONPath expression
-        """
-        stream_name = self.name.replace("_", "")
-        return f"{stream_name}[*]"
-
-    def parse_response(self, response: Any) -> Iterable[dict]:
-        """Parse the response and yield records.
-
-        Args:
-            response: HTTP response
-
-        Yields:
-            Individual records from the API
-        """
-        data = response.json()
-
-        yield from extract_jsonpath(self.records_jsonpath, data)
-
 
 class FullTableStream(XeroStream):
     """Base class for streams that don't support incremental sync."""
 
-    @property
-    def records_jsonpath(self) -> str:
-        """JSONPath to extract records from API response.
-
-        Returns:
-            JSONPath expression
-        """
-        stream_name = self.name.replace("_", "")
-        return f"{stream_name}[*]"
-
-    def parse_response(self, response: Any) -> Iterable[dict]:
-        """Parse the response and yield records.
-
-        Args:
-            response: HTTP response
-
-        Yields:
-            Individual records from the API
-        """
-        data = response.json()
-
-        yield from extract_jsonpath(self.records_jsonpath, data)
+    replication_key = None
 
 
 # Paginated Streams (10)
@@ -213,6 +141,7 @@ class BankTransactionsStream(PaginatedStream):
     path = "/BankTransactions"
     primary_keys = ["BankTransactionID"]
     replication_key = "UpdatedDateUTC"
+    records_jsonpath = "$.BankTransactions[*]"
 
     schema = th.PropertiesList(
         th.Property("BankTransactionID", th.StringType),
@@ -242,6 +171,7 @@ class ContactsStream(PaginatedStream):
     path = "/Contacts"
     primary_keys = ["ContactID"]
     replication_key = "UpdatedDateUTC"
+    records_jsonpath = "$.Contacts[*]"
 
     schema = th.PropertiesList(
         th.Property("ContactID", th.StringType),
@@ -297,6 +227,7 @@ class QuotesStream(PaginatedStream):
     path = "/Quotes"
     primary_keys = ["QuoteID"]
     replication_key = "UpdatedDateUTC"
+    records_jsonpath = "$.Quotes[*]"
 
     schema = th.PropertiesList(
         th.Property("QuoteID", th.StringType),
@@ -331,6 +262,7 @@ class CreditNotesStream(PaginatedStream):
     path = "/CreditNotes"
     primary_keys = ["CreditNoteID"]
     replication_key = "UpdatedDateUTC"
+    records_jsonpath = "$.CreditNotes[*]"
 
     schema = th.PropertiesList(
         th.Property("CreditNoteID", th.StringType),
@@ -361,6 +293,7 @@ class InvoicesStream(PaginatedStream):
     path = "/Invoices"
     primary_keys = ["InvoiceID"]
     replication_key = "UpdatedDateUTC"
+    records_jsonpath = "$.Invoices[*]"
 
     schema = th.PropertiesList(
         th.Property("InvoiceID", th.StringType),
@@ -404,6 +337,7 @@ class ManualJournalsStream(PaginatedStream):
     path = "/ManualJournals"
     primary_keys = ["ManualJournalID"]
     replication_key = "UpdatedDateUTC"
+    records_jsonpath = "$.ManualJournals[*]"
 
     schema = th.PropertiesList(
         th.Property("ManualJournalID", th.StringType),
@@ -435,6 +369,7 @@ class OverpaymentsStream(PaginatedStream):
     path = "/Overpayments"
     primary_keys = ["OverpaymentID"]
     replication_key = "UpdatedDateUTC"
+    records_jsonpath = "$.Overpayments[*]"
 
     schema = th.PropertiesList(
         th.Property("OverpaymentID", th.StringType),
@@ -463,6 +398,7 @@ class PaymentsStream(PaginatedStream):
     path = "/Payments"
     primary_keys = ["PaymentID"]
     replication_key = "UpdatedDateUTC"
+    records_jsonpath = "$.Payments[*]"
 
     schema = th.PropertiesList(
         th.Property("PaymentID", th.StringType),
@@ -491,6 +427,7 @@ class PrepaymentsStream(PaginatedStream):
     path = "/Prepayments"
     primary_keys = ["PrepaymentID"]
     replication_key = "UpdatedDateUTC"
+    records_jsonpath = "$.Prepayments[*]"
 
     schema = th.PropertiesList(
         th.Property("PrepaymentID", th.StringType),
@@ -519,6 +456,7 @@ class PurchaseOrdersStream(PaginatedStream):
     path = "/PurchaseOrders"
     primary_keys = ["PurchaseOrderID"]
     replication_key = "UpdatedDateUTC"
+    records_jsonpath = "$.PurchaseOrders[*]"
 
     schema = th.PropertiesList(
         th.Property("PurchaseOrderID", th.StringType),
@@ -639,6 +577,7 @@ class AccountsStream(BookmarkedStream):
     path = "/Accounts"
     primary_keys = ["AccountID"]
     replication_key = "UpdatedDateUTC"
+    records_jsonpath = "$.Accounts[*]"
 
     schema = th.PropertiesList(
         th.Property("AccountID", th.StringType),
@@ -669,6 +608,7 @@ class BankTransfersStream(BookmarkedStream):
     path = "/BankTransfers"
     primary_keys = ["BankTransferID"]
     replication_key = "CreatedDateUTC"  # Note: Uses CreatedDateUTC, not UpdatedDateUTC
+    records_jsonpath = "$.BankTransfers[*]"
 
     schema = th.PropertiesList(
         th.Property("BankTransferID", th.StringType),
@@ -691,6 +631,7 @@ class EmployeesStream(BookmarkedStream):
     path = "/Employees"
     primary_keys = ["EmployeeID"]
     replication_key = "UpdatedDateUTC"
+    records_jsonpath = "$.Employees[*]"
 
     schema = th.PropertiesList(
         th.Property("EmployeeID", th.StringType),
@@ -709,6 +650,7 @@ class ExpenseClaimsStream(BookmarkedStream):
     path = "/ExpenseClaims"
     primary_keys = ["ExpenseClaimID"]
     replication_key = "UpdatedDateUTC"
+    records_jsonpath = "$.ExpenseClaims[*]"
 
     schema = th.PropertiesList(
         th.Property("ExpenseClaimID", th.StringType),
@@ -733,6 +675,7 @@ class ItemsStream(BookmarkedStream):
     path = "/Items"
     primary_keys = ["ItemID"]
     replication_key = "UpdatedDateUTC"
+    records_jsonpath = "$.Items[*]"
 
     schema = th.PropertiesList(
         th.Property("ItemID", th.StringType),
@@ -759,6 +702,7 @@ class ReceiptsStream(BookmarkedStream):
     path = "/Receipts"
     primary_keys = ["ReceiptID"]
     replication_key = "UpdatedDateUTC"
+    records_jsonpath = "$.Receipts[*]"
 
     schema = th.PropertiesList(
         th.Property("ReceiptID", th.StringType),
@@ -786,6 +730,7 @@ class UsersStream(BookmarkedStream):
     path = "/Users"
     primary_keys = ["UserID"]
     replication_key = "UpdatedDateUTC"
+    records_jsonpath = "$.Users[*]"
 
     schema = th.PropertiesList(
         th.Property("UserID", th.StringType),
@@ -807,6 +752,7 @@ class BrandingThemesStream(FullTableStream):
     name = "branding_themes"
     path = "/BrandingThemes"
     primary_keys = ["BrandingThemeID"]
+    records_jsonpath = "$.BrandingThemes[*]"
 
     schema = th.PropertiesList(
         th.Property("BrandingThemeID", th.StringType),
@@ -824,6 +770,7 @@ class ContactGroupsStream(FullTableStream):
     name = "contact_groups"
     path = "/ContactGroups"
     primary_keys = ["ContactGroupID"]
+    records_jsonpath = "$.ContactGroups[*]"
 
     schema = th.PropertiesList(
         th.Property("ContactGroupID", th.StringType),
@@ -839,6 +786,7 @@ class CurrenciesStream(FullTableStream):
     name = "currencies"
     path = "/Currencies"
     primary_keys = ["Code"]
+    records_jsonpath = "$.Currencies[*]"
 
     schema = th.PropertiesList(
         th.Property("Code", th.StringType),
@@ -852,6 +800,7 @@ class OrganisationsStream(FullTableStream):
     name = "organisations"
     path = "/Organisations"
     primary_keys = ["OrganisationID"]
+    records_jsonpath = "$.Organisations[*]"
 
     schema = th.PropertiesList(
         th.Property("OrganisationID", th.StringType),
@@ -893,6 +842,7 @@ class RepeatingInvoicesStream(FullTableStream):
     name = "repeating_invoices"
     path = "/RepeatingInvoices"
     primary_keys = ["RepeatingInvoiceID"]
+    records_jsonpath = "$.RepeatingInvoices[*]"
 
     schema = th.PropertiesList(
         th.Property("RepeatingInvoiceID", th.StringType),
@@ -918,6 +868,7 @@ class TaxRatesStream(FullTableStream):
     name = "tax_rates"
     path = "/TaxRates"
     primary_keys = ["Name"]
+    records_jsonpath = "$.TaxRates[*]"
 
     schema = th.PropertiesList(
         th.Property("Name", th.StringType),
@@ -940,6 +891,7 @@ class TrackingCategoriesStream(FullTableStream):
     name = "tracking_categories"
     path = "/TrackingCategories"
     primary_keys = ["TrackingCategoryID"]
+    records_jsonpath = "$.TrackingCategories[*]"
 
     schema = th.PropertiesList(
         th.Property("TrackingCategoryID", th.StringType),
@@ -955,6 +907,7 @@ class LinkedTransactionsStream(FullTableStream):
     name = "linked_transactions"
     path = "/LinkedTransactions"
     primary_keys = ["LinkedTransactionID"]
+    records_jsonpath = "$.LinkedTransactions[*]"
 
     schema = th.PropertiesList(
         th.Property("LinkedTransactionID", th.StringType),
