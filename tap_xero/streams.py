@@ -95,36 +95,6 @@ class PaginatedStream(XeroStream):
         return None
 
 
-class BookmarkedStream(XeroStream):
-    """Base class for non-paginated streams that support Modified-After."""
-
-    replication_key = "UpdatedDateUTC"
-
-    @override
-    def get_url_params(
-        self,
-        context: Context | None,
-        next_page_token: Any | None,
-    ) -> dict[str, Any]:
-        """Get URL query parameters.
-
-        Args:
-            context: Stream partition or context dictionary
-            next_page_token: Token for pagination (not used)
-
-        Returns:
-            Dictionary of query parameters
-        """
-        params: dict[str, Any] = {}
-
-        # Add replication key filter for incremental sync
-        # starting_timestamp = self.get_starting_replication_key_value(context)
-        # if starting_timestamp:
-        #    params["where"] = f'{self.replication_key}>DateTime({starting_timestamp.replace(":", "%3A")})'
-
-        return params
-
-
 class FullTableStream(XeroStream):
     """Base class for streams that don't support incremental sync."""
 
@@ -567,10 +537,10 @@ class JournalsStream(XeroStream):
         return None
 
 
-# Bookmarked Streams (7)
+# Generic Bookmarked Streams (7)
 
 
-class AccountsStream(BookmarkedStream):
+class AccountsStream(XeroStream):
     """Accounts stream."""
 
     name = "accounts"
@@ -601,7 +571,7 @@ class AccountsStream(BookmarkedStream):
     ).to_dict()
 
 
-class BankTransfersStream(BookmarkedStream):
+class BankTransfersStream(XeroStream):
     """Bank Transfers stream."""
 
     name = "bank_transfers"
@@ -624,7 +594,7 @@ class BankTransfersStream(BookmarkedStream):
     ).to_dict()
 
 
-class EmployeesStream(BookmarkedStream):
+class EmployeesStream(XeroStream):
     """Employees stream."""
 
     name = "employees"
@@ -643,7 +613,7 @@ class EmployeesStream(BookmarkedStream):
     ).to_dict()
 
 
-class ExpenseClaimsStream(BookmarkedStream):
+class ExpenseClaimsStream(XeroStream):
     """Expense Claims stream."""
 
     name = "expense_claims"
@@ -668,7 +638,7 @@ class ExpenseClaimsStream(BookmarkedStream):
     ).to_dict()
 
 
-class ItemsStream(BookmarkedStream):
+class ItemsStream(XeroStream):
     """Items stream."""
 
     name = "items"
@@ -695,7 +665,7 @@ class ItemsStream(BookmarkedStream):
     ).to_dict()
 
 
-class ReceiptsStream(BookmarkedStream):
+class ReceiptsStream(XeroStream):
     """Receipts stream."""
 
     name = "receipts"
@@ -723,7 +693,7 @@ class ReceiptsStream(BookmarkedStream):
     ).to_dict()
 
 
-class UsersStream(BookmarkedStream):
+class UsersStream(XeroStream):
     """Users stream."""
 
     name = "users"

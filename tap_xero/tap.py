@@ -117,7 +117,7 @@ class TapXero(Tap):
             streams.PurchaseOrdersStream(self),
             # Journal Stream (1)
             streams.JournalsStream(self),
-            # Bookmarked Streams (7)
+            # Generic Bookmarked Streams (7)
             streams.AccountsStream(self),
             streams.BankTransfersStream(self),
             streams.EmployeesStream(self),
