@@ -161,6 +161,7 @@ class BankTransactionsStream(PaginatedStream):
         th.Property("Total", th.NumberType),
         th.Property("UpdatedDateUTC", th.StringType),
         th.Property("HasAttachments", th.BooleanType),
+        th.Property("DateString", th.StringType),
     ).to_dict()
 
 
@@ -194,6 +195,11 @@ class ContactsStream(PaginatedStream):
         th.Property("IsCustomer", th.BooleanType),
         th.Property("DefaultCurrency", th.StringType),
         th.Property("HasAttachments", th.BooleanType),
+        th.Property("BrandingTheme", th.ObjectType()),
+        th.Property("Balances", th.ObjectType()),
+        th.Property("ContactPersons", th.ArrayType(th.ObjectType())),
+        th.Property("HasValidationErrors", th.BooleanType),
+        th.Property("BatchPayments", th.ObjectType()),
     ).to_dict()
 
     @override
@@ -283,6 +289,12 @@ class CreditNotesStream(PaginatedStream):
         th.Property("RemainingCredit", th.NumberType),
         th.Property("Allocations", th.ArrayType(th.ObjectType())),
         th.Property("HasAttachments", th.BooleanType),
+        th.Property("Payments", th.ArrayType(th.ObjectType())),
+        th.Property("ID", th.StringType),
+        th.Property("HasErrors", th.BooleanType),
+        th.Property("InvoiceAddresses", th.ArrayType(th.ObjectType())),
+        th.Property("Reference", th.StringType),
+        th.Property("DateString", th.StringType),
     ).to_dict()
 
 
@@ -327,6 +339,11 @@ class InvoicesStream(PaginatedStream):
         th.Property("FullyPaidOnDate", th.StringType),
         th.Property("BrandingThemeID", th.StringType),
         th.Property("SentToContact", th.BooleanType),
+        th.Property("Url", th.StringType),
+        th.Property("InvoiceAddresses", th.ArrayType(th.ObjectType())),
+        th.Property("HasErrors", th.BooleanType),
+        th.Property("InvoicePaymentServices", th.ArrayType(th.ObjectType())),
+        th.Property("RepeatingInvoiceID", th.StringType),
     ).to_dict()
 
 
@@ -417,6 +434,9 @@ class PaymentsStream(PaginatedStream):
         th.Property("IsReconciled", th.BooleanType),
         th.Property("HasAccount", th.BooleanType),
         th.Property("HasValidationErrors", th.BooleanType),
+        th.Property("BatchPaymentID", th.StringType),
+        th.Property("BatchPayment", th.ObjectType()),
+        th.Property("BankAmount", th.NumberType),
     ).to_dict()
 
 
@@ -481,6 +501,12 @@ class PurchaseOrdersStream(PaginatedStream):
         th.Property("Contact", th.ObjectType()),
         th.Property("BrandingThemeID", th.StringType),
         th.Property("HasAttachments", th.BooleanType),
+        th.Property("HasErrors", th.BooleanType),
+        th.Property("IsDiscounted", th.BooleanType),
+        th.Property("Reference", th.StringType),
+        th.Property("Type", th.StringType),
+        th.Property("ExpectedArrivalDateString", th.StringType),
+        th.Property("ExpectedArrivalDate", th.StringType),
     ).to_dict()
 
 
@@ -598,6 +624,7 @@ class AccountsStream(BookmarkedStream):
         th.Property("ReportingCodeName", th.StringType),
         th.Property("HasAttachments", th.BooleanType),
         th.Property("UpdatedDateUTC", th.StringType),
+        th.Property("AddToWatchlist", th.BooleanType),
     ).to_dict()
 
 
@@ -740,6 +767,7 @@ class UsersStream(BookmarkedStream):
         th.Property("UpdatedDateUTC", th.StringType),
         th.Property("IsSubscriber", th.BooleanType),
         th.Property("OrganisationRole", th.StringType),
+        th.Property("GlobalUserID", th.StringType),
     ).to_dict()
 
 
@@ -777,6 +805,7 @@ class ContactGroupsStream(FullTableStream):
         th.Property("Name", th.StringType),
         th.Property("Status", th.StringType),
         th.Property("Contacts", th.ArrayType(th.ObjectType())),
+        th.Property("HasValidationErrors", th.BooleanType),
     ).to_dict()
 
 
@@ -833,6 +862,9 @@ class OrganisationsStream(FullTableStream):
         th.Property("Phones", th.ArrayType(th.ObjectType())),
         th.Property("ExternalLinks", th.ArrayType(th.ObjectType())),
         th.Property("PaymentTerms", th.ObjectType()),
+        th.Property("Edition", th.StringType),
+        th.Property("Class", th.StringType),
+        th.Property("TaxNumberName", th.StringType),
     ).to_dict()
 
 
@@ -859,6 +891,12 @@ class RepeatingInvoicesStream(FullTableStream):
         th.Property("TotalTax", th.NumberType),
         th.Property("Total", th.NumberType),
         th.Property("HasAttachments", th.BooleanType),
+        th.Property("ApprovedForSending", th.BooleanType),
+        th.Property("SendCopy", th.BooleanType),
+        th.Property("MarkAsSent", th.BooleanType),
+        th.Property("IncludePDF", th.BooleanType),
+        th.Property("ID", th.StringType),
+        th.Property("UpdatedDateUTC", th.StringType),
     ).to_dict()
 
 
@@ -873,6 +911,9 @@ class TaxRatesStream(FullTableStream):
     schema = th.PropertiesList(
         th.Property("Name", th.StringType),
         th.Property("TaxType", th.StringType),
+        th.Property("TaxComponents", th.ArrayType(th.ObjectType())),
+        th.Property("Status", th.StringType),
+        th.Property("ReportTaxType", th.StringType),
         th.Property("CanApplyToAssets", th.BooleanType),
         th.Property("CanApplyToEquity", th.BooleanType),
         th.Property("CanApplyToExpenses", th.BooleanType),
@@ -880,8 +921,6 @@ class TaxRatesStream(FullTableStream):
         th.Property("CanApplyToRevenue", th.BooleanType),
         th.Property("DisplayTaxRate", th.NumberType),
         th.Property("EffectiveRate", th.NumberType),
-        th.Property("Status", th.StringType),
-        th.Property("TaxComponents", th.ArrayType(th.ObjectType())),
     ).to_dict()
 
 
