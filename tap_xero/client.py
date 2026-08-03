@@ -133,8 +133,7 @@ class XeroStream(RESTStream):
             timestamp = timestamp_ms / 1000.0
 
             # Handle negative timestamps (dates before epoch)
-            if timestamp < 0:
-                timestamp = 0
+            timestamp = max(timestamp, 0)
 
             dt = datetime.fromtimestamp(timestamp, tz=timezone.utc)
             return dt.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
