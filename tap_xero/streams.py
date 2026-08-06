@@ -522,11 +522,13 @@ class JournalsStream(XeroStream):
         """
         params: dict[str, Any] = {}
 
-        # Journals use offset parameter with journal number
-        starting_journal_number: int | None
+        # Journals use offset parameter with journal number.
+        # A fresh sync can seed the starting replication value from start_date,
+        # which is not a valid numeric offset for this endpoint.
+        starting_journal_number = self.get_starting_replication_key_value(context)
         if next_page_token:
             params["offset"] = next_page_token
-        elif starting_journal_number := self.get_starting_replication_key_value(context):
+        elif isinstance(starting_journal_number, int):
             params["offset"] = starting_journal_number
 
         return params
