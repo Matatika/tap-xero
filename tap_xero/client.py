@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 import sys
 from collections.abc import Generator
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from functools import cached_property
 from typing import TYPE_CHECKING, Any
 
@@ -115,7 +115,7 @@ class XeroStream(RESTStream):
         """Parse .NET JSON date format to RFC3339.
 
         Xero returns dates in .NET format: /Date(1419937200000+0000)/
-        This converts to RFC3339: 2014-12-30T09:00:00.000000Z
+        This converts to RFC3339: 2014-12-30T11:00:00.000000Z
 
         Args:
             date_str: Date string in .NET JSON format
@@ -129,13 +129,8 @@ class XeroStream(RESTStream):
         # Try .NET JSON date format
         if match := self._dotnet_date_pattern.match(date_str):
             timestamp_ms = int(match.group(1))
-            # Convert milliseconds to seconds
-            timestamp = timestamp_ms / 1000.0
-
-            # Handle negative timestamps (dates before epoch)
-            timestamp = max(timestamp, 0)
-
-            dt = datetime.fromtimestamp(timestamp, tz=timezone.utc)
+            epoch = datetime(1970, 1, 1, tzinfo=timezone.utc)
+            dt = epoch + timedelta(milliseconds=timestamp_ms)
             return dt.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
 
         # If already in ISO format, return as is
