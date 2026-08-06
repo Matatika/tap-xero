@@ -6,7 +6,7 @@ This is a complete rewrite of the [original tap-xero](https://github.com/singer-
 
 ## Features
 
-- **27 Xero API streams** covering accounting transactions, contacts, invoices, and more
+- **26 Xero API streams** covering accounting transactions, contacts, invoices, and more
 - **OAuth2 authentication** with automatic token refresh
 - **Incremental sync support** for most streams using bookmarks
 - **Sophisticated rate limiting** handling for Xero API limits
@@ -75,10 +75,10 @@ uv sync
 
 ### Required Settings
 
-- **client_id**: OAuth2 client ID for your Xero application
-- **client_secret**: OAuth2 client secret for your Xero application
+- **oauth_credentials.client_id**: OAuth2 client ID for your Xero application
+- **oauth_credentials.client_secret**: OAuth2 client secret for your Xero application
 - **tenant_id**: Your Xero tenant/organisation ID
-- **refresh_token**: OAuth2 refresh token (will be automatically updated during sync)
+- **oauth_credentials.refresh_token**: OAuth2 refresh token (will be automatically updated during sync)
 - **start_date**: Earliest record date to sync (ISO 8601 format, e.g., "2020-01-01T00:00:00Z")
 
 ### Optional Settings
@@ -92,10 +92,12 @@ Create a `config.json` file:
 
 ```json
 {
-  "client_id": "YOUR_XERO_CLIENT_ID",
-  "client_secret": "YOUR_XERO_CLIENT_SECRET",
+  "oauth_credentials": {
+    "client_id": "YOUR_XERO_CLIENT_ID",
+    "client_secret": "YOUR_XERO_CLIENT_SECRET",
+    "refresh_token": "YOUR_XERO_REFRESH_TOKEN"
+  },
   "tenant_id": "YOUR_XERO_TENANT_ID",
-  "refresh_token": "YOUR_XERO_REFRESH_TOKEN",
   "start_date": "2020-01-01T00:00:00Z",
   "user_agent": "tap-xero/3.0.0",
   "include_archived_contacts": false
@@ -120,13 +122,15 @@ For enterprise environments using an OAuth proxy (such as the Matatika platform)
 }
 ```
 
-#### Configuration Options
+#### OAuth Credential Options
 
+- **oauth_credentials.client_id**: OAuth2 client ID for standard OAuth
+- **oauth_credentials.client_secret**: OAuth2 client secret for standard OAuth
+- **oauth_credentials.refresh_token**: OAuth2 refresh token for standard or proxy OAuth
 - **oauth_credentials.refresh_proxy_url**: The proxy endpoint URL for token refresh
 - **oauth_credentials.refresh_proxy_url_auth**: Authorization header value for proxy requests
-- **oauth_credentials.refresh_token**: Your Xero refresh token
 
-The tap will automatically use proxy OAuth mode when `client_id` and `client_secret` are not provided. Standard OAuth configuration (with `client_id` and `client_secret`) continues to work as before.
+The tap automatically uses proxy OAuth mode when `oauth_credentials.client_id` and `oauth_credentials.client_secret` are not provided. Standard OAuth configuration uses those fields inside `oauth_credentials`.
 
 #### Proxy Endpoint Requirements
 
@@ -216,10 +220,10 @@ Then run:
 
 ```bash
 meltano install extractor tap-xero
-meltano config tap-xero set client_id YOUR_CLIENT_ID
-meltano config tap-xero set client_secret YOUR_CLIENT_SECRET
-meltano config tap-xero set tenant_id YOUR_TENANT_ID
-meltano config tap-xero set refresh_token YOUR_REFRESH_TOKEN
+meltano config set tap-xero oauth_credentials client_id YOUR_CLIENT_ID
+meltano config set tap-xero oauth_credentials client_secret YOUR_CLIENT_SECRET
+meltano config set tap-xero tenant_id YOUR_TENANT_ID
+meltano config set tap-xero oauth_credentials refresh_token YOUR_REFRESH_TOKEN
 meltano elt tap-xero target-jsonl
 ```
 
