@@ -40,6 +40,37 @@ class XeroRateLimitError(RetriableAPIError):
     """Exception for Xero rate limit errors (429)."""
 
 
+DEFAULT_RETRY_WAIT_SECONDS = 5
+MAX_RETRY_WAIT_SECONDS = 60
+MAX_ERROR_DETAIL_CHARS = 500
+
+
+def _retry_wait_seconds(value: str | int | None) -> int:
+    """Return a bounded Retry-After value, falling back for invalid input."""
+    if value is None:
+        return DEFAULT_RETRY_WAIT_SECONDS
+    try:
+        seconds = int(value)
+    except ValueError:
+        return DEFAULT_RETRY_WAIT_SECONDS
+
+    if seconds < 1:
+        return DEFAULT_RETRY_WAIT_SECONDS
+    return min(seconds, MAX_RETRY_WAIT_SECONDS)
+
+
+def _bounded_detail(value: object) -> str | None:
+    """Normalise and bound an API-provided error detail."""
+    if not isinstance(value, str):
+        return None
+    detail = " ".join(value.split())
+    if not detail:
+        return None
+    if len(detail) > MAX_ERROR_DETAIL_CHARS:
+        return f"{detail[:MAX_ERROR_DETAIL_CHARS]}…"
+    return detail
+
+
 class XeroStream(RESTStream):
     """Base stream class for Xero API."""
 
@@ -179,10 +210,9 @@ class XeroStream(RESTStream):
 
         def _backoff_from_headers(error: Exception):
             if isinstance(error, RetriableAPIError) and error.response is not None:
-                response_headers = error.response.headers
-                return int(response_headers.get("Retry-After", 5))
+                return _retry_wait_seconds(error.response.headers.get("Retry-After"))
 
-            return 5
+            return DEFAULT_RETRY_WAIT_SECONDS
 
         return self.backoff_runtime(value=_backoff_from_headers)
 
@@ -209,12 +239,14 @@ class XeroStream(RESTStream):
         # https://developer.xero.com/documentation/guides/oauth2/limits/#api-rate-limits
         if response.status_code == 429:
             # If Retry-After is present, it's usually the per-minute limit
-            message = response.headers.get("X-Rate-Limit-Problem", "Rate limit hit")
+            message = _bounded_detail(response.headers.get("X-Rate-Limit-Problem"))
+            message = message or "Rate limit hit"
             daily_calls_remaining = response.headers.get("X-DayLimit-Remaining", "?")
             per_minute_calls_remaining = response.headers.get("X-MinLimit-Remaining", "?")
             app_per_minute_calls_remaining = response.headers.get("X-AppMinLimit-Remaining", "?")
 
-            if retry_after := response.headers.get("Retry-After"):
+            if "Retry-After" in response.headers:
+                retry_after = _retry_wait_seconds(response.headers.get("Retry-After"))
                 self.logger.warning(
                     "%s, will retry after %s seconds. Daily calls remaining: %s, per minute calls remaining: %s, app per minute calls remaining: %s",
                     message,
@@ -246,12 +278,16 @@ class XeroStream(RESTStream):
 
         if response.status_code >= 400:
             error_msg = f"Client error {response.status_code}"
+            detail: object = response.text
             try:
                 error_data = response.json()
-                if "Message" in error_data:
-                    error_msg += f": {error_data['Message']}"
-            except Exception:
-                error_msg += f": {response.text}"
+                if isinstance(error_data, dict):
+                    detail = error_data.get("Message", detail)
+            except ValueError:
+                pass
+
+            if bounded_detail := _bounded_detail(detail):
+                error_msg += f": {bounded_detail}"
 
             raise XeroAPIError(error_msg, response)
 
