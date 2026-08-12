@@ -124,9 +124,7 @@ def test_standard_oauth_uses_correct_authenticator():
 def test_authenticators_do_not_share_credentials_between_configurations():
     standard_authenticator.cache_clear()
     first = standard_authenticator("first-client", "first-secret", "first-token")
-    first_again = standard_authenticator(
-        "first-client", "first-secret", "first-token"
-    )
+    first_again = standard_authenticator("first-client", "first-secret", "first-token")
     second = standard_authenticator("second-client", "second-secret", "second-token")
 
     assert first is first_again

@@ -37,9 +37,7 @@ def validate_refresh_proxy_url(url: str) -> str:
             pass
 
     if parsed.scheme != "https" and not (parsed.scheme == "http" and is_loopback):
-        raise ValueError(
-            "refresh_proxy_url must use HTTPS unless it targets the local machine"
-        )
+        raise ValueError("refresh_proxy_url must use HTTPS unless it targets the local machine")
     return url
 
 
