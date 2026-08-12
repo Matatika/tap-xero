@@ -1,12 +1,14 @@
 """OAuth2 authenticator for Xero API."""
 
 import base64
+import datetime
 import ipaddress
 import json
 import sys
 from functools import lru_cache
 from urllib.parse import urlparse
 
+import requests
 from singer_sdk.authenticators import OAuthAuthenticator
 
 if sys.version_info >= (3, 12):
@@ -15,6 +17,41 @@ else:
     from typing_extensions import override
 
 ENDPOINT = "https://identity.xero.com/connect/token"
+
+
+class NoRedirectOAuthAuthenticator(OAuthAuthenticator):
+    """Refresh OAuth tokens without forwarding credentials through redirects."""
+
+    @override
+    def update_access_token(self) -> None:
+        """Refresh a token with fail-closed redirects and bounded errors."""
+        self.logger.info("Requesting new access token")
+        request_time = datetime.datetime.now(datetime.timezone.utc)
+        response = requests.post(
+            self.auth_endpoint,
+            headers=self._oauth_headers,
+            data=self.oauth_request_payload,
+            timeout=60,
+            allow_redirects=False,
+        )
+        if 300 <= response.status_code < 400:
+            raise RuntimeError("Failed to update access token (redirect rejected)")
+        if not 200 <= response.status_code < 300:
+            raise RuntimeError(f"Failed to update access token (status={response.status_code})")
+
+        try:
+            token_json = response.json()
+            access_token = token_json["access_token"]
+            expiration = token_json.get("expires_in", self._default_expiration)
+            expires_in = int(expiration) if expiration else None
+        except (KeyError, TypeError, ValueError):
+            raise RuntimeError("Failed to update access token (invalid response)") from None
+        if not isinstance(access_token, str) or not access_token:
+            raise RuntimeError("Failed to update access token (invalid response)")
+
+        self.access_token = access_token
+        self.expires_in = expires_in
+        self.last_refreshed = request_time
 
 
 def validate_refresh_proxy_url(url: str) -> str:
@@ -41,7 +78,7 @@ def validate_refresh_proxy_url(url: str) -> str:
     return url
 
 
-class XeroOAuth2Authenticator(OAuthAuthenticator):
+class XeroOAuth2Authenticator(NoRedirectOAuthAuthenticator):
     """Authenticator class for Xero OAuth2 flow."""
 
     @override
@@ -100,7 +137,7 @@ class XeroOAuth2Authenticator(OAuthAuthenticator):
         }
 
 
-class ProxyXeroOAuth2Authenticator(OAuthAuthenticator):
+class ProxyXeroOAuth2Authenticator(NoRedirectOAuthAuthenticator):
     """Authenticator for Xero Proxy OAuth 2.0 flows."""
 
     @override

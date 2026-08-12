@@ -8,6 +8,7 @@ import pytest
 import responses
 
 from tap_xero.auth import (
+    ENDPOINT,
     ProxyXeroOAuth2Authenticator,
     XeroOAuth2Authenticator,
     standard_authenticator,
@@ -119,6 +120,72 @@ def test_standard_oauth_uses_correct_authenticator():
     assert isinstance(stream.authenticator, XeroOAuth2Authenticator), (
         f"Expected XeroOAuth2Authenticator, got {type(stream.authenticator).__name__}"
     )
+
+
+@pytest.mark.parametrize("mode", ["standard", "proxy"])
+@responses.activate
+def test_oauth_refresh_rejects_cross_origin_redirects_without_forwarding_secrets(mode):
+    evil_url = "https://evil.example/token"
+    if mode == "standard":
+        authenticator = XeroOAuth2Authenticator(
+            client_id="redirect-client",
+            client_secret="redirect-secret",
+            refresh_token="redirect-refresh-token",
+        )
+        endpoint = ENDPOINT
+    else:
+        authenticator = ProxyXeroOAuth2Authenticator(
+            refresh_token="redirect-refresh-token",
+            proxy_auth="Bearer redirect-proxy-secret",
+            auth_endpoint="https://proxy.example/token",
+        )
+        endpoint = "https://proxy.example/token"
+
+    responses.add(responses.POST, endpoint, status=302, headers={"Location": evil_url})
+    responses.add(responses.POST, evil_url, json={"access_token": "should-not-run"})
+
+    with pytest.raises(RuntimeError, match="redirect rejected"):
+        authenticator.update_access_token()
+
+    assert len(responses.calls) == 1
+    assert responses.calls[0].request.url == endpoint
+    assert all(call.request.url != evil_url for call in responses.calls)
+
+
+@pytest.mark.parametrize("mode", ["standard", "proxy"])
+@responses.activate
+def test_oauth_refresh_errors_do_not_echo_response_or_credentials(mode):
+    if mode == "standard":
+        authenticator = XeroOAuth2Authenticator(
+            client_id="error-client",
+            client_secret="error-secret",
+            refresh_token="error-refresh-token",
+        )
+        endpoint = ENDPOINT
+    else:
+        authenticator = ProxyXeroOAuth2Authenticator(
+            refresh_token="error-refresh-token",
+            proxy_auth="Bearer error-proxy-secret",
+            auth_endpoint="https://proxy.example/token",
+        )
+        endpoint = "https://proxy.example/token"
+
+    responses.add(
+        responses.POST,
+        endpoint,
+        body="Authorization: Bearer reflected-secret\r\nerror-refresh-token",
+        status=400,
+    )
+
+    with pytest.raises(RuntimeError) as raised:
+        authenticator.update_access_token()
+
+    message = str(raised.value)
+    assert message == "Failed to update access token (status=400)"
+    assert "reflected-secret" not in message
+    assert "error-refresh-token" not in message
+    assert "error-secret" not in message
+    assert "error-proxy-secret" not in message
 
 
 def test_authenticators_do_not_share_credentials_between_configurations():
