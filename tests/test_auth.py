@@ -188,6 +188,49 @@ def test_oauth_refresh_errors_do_not_echo_response_or_credentials(mode):
     assert "error-proxy-secret" not in message
 
 
+@pytest.mark.parametrize("mode", ["standard", "proxy"])
+@pytest.mark.parametrize("rotates", [True, False])
+@responses.activate
+def test_oauth_refresh_preserves_rotation_and_reuses_the_current_token(mode, rotates):
+    initial_token = "initial-refresh-token"
+    rotated_token = "rotated-refresh-token"
+    if mode == "standard":
+        authenticator = XeroOAuth2Authenticator(
+            client_id="rotation-client",
+            client_secret="rotation-secret",
+            refresh_token=initial_token,
+        )
+        endpoint = ENDPOINT
+    else:
+        authenticator = ProxyXeroOAuth2Authenticator(
+            refresh_token=initial_token,
+            proxy_auth="Bearer rotation-proxy-secret",
+            auth_endpoint="https://proxy.example/token",
+        )
+        endpoint = "https://proxy.example/token"
+
+    first_response = {"access_token": "access-one", "expires_in": 1800}
+    if rotates:
+        first_response["refresh_token"] = rotated_token
+    responses.add(responses.POST, endpoint, json=first_response)
+    responses.add(
+        responses.POST,
+        endpoint,
+        json={"access_token": "access-two", "expires_in": 1800},
+    )
+
+    authenticator.update_access_token()
+    authenticator.update_access_token()
+
+    expected_token = rotated_token if rotates else initial_token
+    assert authenticator.refresh_token == expected_token
+    second_body = responses.calls[1].request.body
+    if mode == "proxy":
+        assert json.loads(second_body)["refresh_token"] == expected_token
+    else:
+        assert f"refresh_token={expected_token}" in second_body
+
+
 def test_authenticators_do_not_share_credentials_between_configurations():
     standard_authenticator.cache_clear()
     first = standard_authenticator("first-client", "first-secret", "first-token")

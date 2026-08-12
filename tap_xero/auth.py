@@ -22,12 +22,21 @@ ENDPOINT = "https://identity.xero.com/connect/token"
 class NoRedirectOAuthAuthenticator(OAuthAuthenticator):
     """Refresh OAuth tokens without forwarding credentials through redirects."""
 
+    def __init__(
+        self,
+        *args,
+        session: requests.Session | None = None,
+        **kwargs,
+    ) -> None:
+        super().__init__(*args, **kwargs)
+        self._session = session or requests.Session()
+
     @override
     def update_access_token(self) -> None:
         """Refresh a token with fail-closed redirects and bounded errors."""
         self.logger.info("Requesting new access token")
         request_time = datetime.datetime.now(datetime.timezone.utc)
-        response = requests.post(
+        response = self._session.post(
             self.auth_endpoint,
             headers=self._oauth_headers,
             data=self.oauth_request_payload,
@@ -50,6 +59,9 @@ class NoRedirectOAuthAuthenticator(OAuthAuthenticator):
             raise RuntimeError("Failed to update access token (invalid response)")
 
         self.access_token = access_token
+        rotated_refresh_token = token_json.get("refresh_token")
+        if isinstance(rotated_refresh_token, str) and rotated_refresh_token:
+            self.refresh_token = rotated_refresh_token
         self.expires_in = expires_in
         self.last_refreshed = request_time
 
