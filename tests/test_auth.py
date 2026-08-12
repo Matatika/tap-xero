@@ -7,7 +7,12 @@ from typing import Any
 import pytest
 import responses
 
-from tap_xero.auth import ProxyXeroOAuth2Authenticator, XeroOAuth2Authenticator
+from tap_xero.auth import (
+    ProxyXeroOAuth2Authenticator,
+    XeroOAuth2Authenticator,
+    standard_authenticator,
+    validate_refresh_proxy_url,
+)
 from tap_xero.client import XeroStream
 from tap_xero.tap import TapXero
 
@@ -114,6 +119,44 @@ def test_standard_oauth_uses_correct_authenticator():
     assert isinstance(stream.authenticator, XeroOAuth2Authenticator), (
         f"Expected XeroOAuth2Authenticator, got {type(stream.authenticator).__name__}"
     )
+
+
+def test_authenticators_do_not_share_credentials_between_configurations():
+    standard_authenticator.cache_clear()
+    first = standard_authenticator("first-client", "first-secret", "first-token")
+    first_again = standard_authenticator(
+        "first-client", "first-secret", "first-token"
+    )
+    second = standard_authenticator("second-client", "second-secret", "second-token")
+
+    assert first is first_again
+    assert first is not second
+    assert first.client_id == "first-client"
+    assert first.refresh_token == "first-token"
+    assert second.client_id == "second-client"
+    assert second.refresh_token == "second-token"
+
+
+def test_refresh_proxy_requires_https_except_for_loopback():
+    assert validate_refresh_proxy_url("https://proxy.example.com/token") == (
+        "https://proxy.example.com/token"
+    )
+    assert validate_refresh_proxy_url("http://localhost:8080/token") == (
+        "http://localhost:8080/token"
+    )
+    assert validate_refresh_proxy_url("http://127.0.0.1:8080/token") == (
+        "http://127.0.0.1:8080/token"
+    )
+
+    for url in (
+        "http://proxy.example.com/token",
+        "ftp://proxy.example.com/token",
+        "https://user@proxy.example.com/token",
+        "https://proxy.example.com:not-a-port/token",
+        "https://[malformed",
+    ):
+        with pytest.raises(ValueError):
+            validate_refresh_proxy_url(url)
 
 
 def test_invalid_oauth_config_raises_validation_error():

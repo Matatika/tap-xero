@@ -1,10 +1,13 @@
 """OAuth2 authenticator for Xero API."""
 
 import base64
+import ipaddress
 import json
 import sys
+from functools import lru_cache
+from urllib.parse import urlparse
 
-from singer_sdk.authenticators import OAuthAuthenticator, SingletonMeta
+from singer_sdk.authenticators import OAuthAuthenticator
 
 if sys.version_info >= (3, 12):
     from typing import override
@@ -14,7 +17,33 @@ else:
 ENDPOINT = "https://identity.xero.com/connect/token"
 
 
-class XeroOAuth2Authenticator(OAuthAuthenticator, metaclass=SingletonMeta):
+def validate_refresh_proxy_url(url: str) -> str:
+    """Require encrypted transport, except for an explicit loopback proxy."""
+    try:
+        parsed = urlparse(url)
+        hostname = parsed.hostname
+        parsed.port
+    except (TypeError, ValueError) as exc:
+        raise ValueError("refresh_proxy_url must be a valid URL") from exc
+
+    if not hostname or parsed.username is not None or parsed.password is not None:
+        raise ValueError("refresh_proxy_url must not contain user information")
+
+    is_loopback = hostname == "localhost"
+    if not is_loopback:
+        try:
+            is_loopback = ipaddress.ip_address(hostname).is_loopback
+        except ValueError:
+            pass
+
+    if parsed.scheme != "https" and not (parsed.scheme == "http" and is_loopback):
+        raise ValueError(
+            "refresh_proxy_url must use HTTPS unless it targets the local machine"
+        )
+    return url
+
+
+class XeroOAuth2Authenticator(OAuthAuthenticator):
     """Authenticator class for Xero OAuth2 flow."""
 
     @override
@@ -73,7 +102,7 @@ class XeroOAuth2Authenticator(OAuthAuthenticator, metaclass=SingletonMeta):
         }
 
 
-class ProxyXeroOAuth2Authenticator(OAuthAuthenticator, metaclass=SingletonMeta):
+class ProxyXeroOAuth2Authenticator(OAuthAuthenticator):
     """Authenticator for Xero Proxy OAuth 2.0 flows."""
 
     @override
@@ -91,7 +120,7 @@ class ProxyXeroOAuth2Authenticator(OAuthAuthenticator, metaclass=SingletonMeta):
             proxy_auth: Authorization header value for proxy OAuth requests.
             kwargs: Additional keyword arguments for the authenticator.
         """
-        super().__init__(auth_endpoint=auth_endpoint)
+        super().__init__(auth_endpoint=validate_refresh_proxy_url(auth_endpoint))
         self.refresh_token = refresh_token
         self._proxy_auth = proxy_auth
         self._oauth_headers = self.oauth_request_headers
@@ -114,3 +143,31 @@ class ProxyXeroOAuth2Authenticator(OAuthAuthenticator, metaclass=SingletonMeta):
                 "grant_type": "refresh_token",
             },
         )
+
+
+@lru_cache(maxsize=32)
+def standard_authenticator(
+    client_id: str,
+    client_secret: str,
+    refresh_token: str,
+) -> XeroOAuth2Authenticator:
+    """Share rotated tokens only between streams using the same credentials."""
+    return XeroOAuth2Authenticator(
+        client_id=client_id,
+        client_secret=client_secret,
+        refresh_token=refresh_token,
+    )
+
+
+@lru_cache(maxsize=32)
+def proxy_authenticator(
+    refresh_token: str,
+    proxy_auth: str | None,
+    auth_endpoint: str,
+) -> ProxyXeroOAuth2Authenticator:
+    """Share a proxy token only between streams using the same proxy config."""
+    return ProxyXeroOAuth2Authenticator(
+        refresh_token=refresh_token,
+        proxy_auth=proxy_auth,
+        auth_endpoint=auth_endpoint,
+    )

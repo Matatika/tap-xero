@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Any
 from singer_sdk.exceptions import RetriableAPIError
 from singer_sdk.streams import RESTStream
 
-from tap_xero.auth import ProxyXeroOAuth2Authenticator, XeroOAuth2Authenticator
+from tap_xero.auth import proxy_authenticator, standard_authenticator
 
 if TYPE_CHECKING:
     from collections.abc import Generator
@@ -67,7 +67,7 @@ class XeroStream(RESTStream):
             and (client_secret := oauth_credentials.get("client_secret"))  # Client secret is set
         ):
             # Standard OAuth mode
-            return XeroOAuth2Authenticator(
+            return standard_authenticator(
                 client_id=client_id,
                 client_secret=client_secret,
                 refresh_token=oauth_credentials["refresh_token"],
@@ -76,7 +76,7 @@ class XeroStream(RESTStream):
         # Check for proxy OAuth credentials (refresh_proxy_url)
         if refresh_proxy_url := oauth_credentials.get("refresh_proxy_url"):
             # Proxy OAuth mode
-            return ProxyXeroOAuth2Authenticator(
+            return proxy_authenticator(
                 refresh_token=oauth_credentials["refresh_token"],
                 proxy_auth=oauth_credentials.get("refresh_proxy_url_auth"),
                 auth_endpoint=refresh_proxy_url,
