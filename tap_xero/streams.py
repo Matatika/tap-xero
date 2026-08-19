@@ -6,6 +6,7 @@ import sys
 from typing import TYPE_CHECKING, Any
 
 from singer_sdk import typing as th
+from singer_sdk.helpers.jsonpath import extract_jsonpath
 
 from tap_xero.client import XeroStream
 
@@ -85,7 +86,7 @@ class PaginatedStream(XeroStream):
         data = response.json()
 
         # Get the records from the response
-        records = data.get(self.records_jsonpath.split(".")[0], [])
+        records = list(extract_jsonpath(self.records_jsonpath, input=data))
 
         # If we got a full page, there might be more
         if len(records) >= self.page_size:
