@@ -2,11 +2,19 @@
 
 from __future__ import annotations
 
+import time
+
 import pytest
 import requests
 from singer_sdk.exceptions import RetriableAPIError
 
-from tap_xero.client import XeroAPIError, XeroRateLimitError, XeroStream
+from tap_xero.client import (
+    DEFAULT_RETRY_WAIT_SECONDS,
+    MAX_RETRY_WAIT_SECONDS,
+    XeroAPIError,
+    XeroRateLimitError,
+    XeroStream,
+)
 from tap_xero.tap import TapXero
 
 SAMPLE_CONFIG = {
@@ -49,6 +57,38 @@ def retry_wait(stream: XeroStream, error: Exception) -> int | float:
     return generator.send(error)
 
 
+def drive_decorated_request(
+    stream: XeroStream,
+    monkeypatch: pytest.MonkeyPatch,
+    api_response: requests.Response,
+) -> tuple[list[requests.PreparedRequest], list[float]]:
+    """Drive the real decorated request path until it gives up.
+
+    Returns the requests actually sent and the waits actually taken, so the retry
+    ceiling is measured through ``request_decorator`` rather than asserted against
+    the constant that defines it.
+    """
+    sent: list[requests.PreparedRequest] = []
+    waits: list[float] = []
+
+    def send(prepared_request: requests.PreparedRequest, **_kwargs: object) -> requests.Response:
+        sent.append(prepared_request)
+        return api_response
+
+    monkeypatch.setattr(time, "sleep", waits.append)
+    monkeypatch.setattr(stream.requests_session, "send", send)
+    # `authenticator` is a cached_property, so seeding it avoids a real token refresh.
+    stream.__dict__["authenticator"] = lambda prepared_request: prepared_request
+
+    decorated_request = stream.request_decorator(stream._request)
+    prepared = requests.Request("GET", f"{stream.url_base}{stream.path}").prepare()
+
+    with pytest.raises(RetriableAPIError):
+        decorated_request(prepared, None)
+
+    return sent, waits
+
+
 @pytest.mark.parametrize(
     ("retry_after", "expected"),
     [("12", 12), ("9999", 60), ("0", 5), ("-1", 5), ("invalid", 5), (None, 5)],
@@ -65,8 +105,42 @@ def test_retry_wait_is_bounded(
     assert retry_wait(stream, error) == expected
 
 
-def test_retry_attempts_are_bounded(stream: XeroStream) -> None:
-    assert stream.backoff_max_tries() == 5
+def test_retry_attempts_are_bounded(stream: XeroStream, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A permanently failing endpoint is attempted five times, then gives up."""
+    sent, waits = drive_decorated_request(stream, monkeypatch, response(503))
+
+    assert len(sent) == 5
+    assert len(waits) == 4
+    # `random_jitter` adds up to one second on top of each bounded wait.
+    assert all(DEFAULT_RETRY_WAIT_SECONDS <= wait < MAX_RETRY_WAIT_SECONDS + 1 for wait in waits)
+
+
+def test_retry_ceiling_is_taken_from_backoff_max_tries(
+    stream: XeroStream,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The ceiling has to reach the decorator, not just exist on the stream."""
+    monkeypatch.setattr(stream, "backoff_max_tries", lambda: 2)
+
+    sent, waits = drive_decorated_request(stream, monkeypatch, response(503))
+
+    assert len(sent) == 2
+    assert len(waits) == 1
+
+
+def test_retry_after_header_reaches_the_decorator(
+    stream: XeroStream,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The wait the generator derives from Retry-After is the wait actually taken."""
+    sent, waits = drive_decorated_request(
+        stream,
+        monkeypatch,
+        response(429, headers={"Retry-After": "12"}),
+    )
+
+    assert len(sent) == 5
+    assert all(12 <= wait < 13 for wait in waits)
 
 
 def test_minute_rate_limit_is_retriable_with_a_bounded_wait(stream: XeroStream) -> None:
@@ -118,3 +192,68 @@ def test_client_error_detail_is_normalised_and_bounded(stream: XeroStream) -> No
     assert omitted_marker not in message
     assert len(message) <= 520
     assert raised.value.response is api_response
+
+
+@pytest.mark.parametrize(
+    ("content_type", "body", "expected"),
+    [
+        pytest.param(
+            "text/html",
+            "<html>Bad   Request</html>",
+            "Client error 400: <html>Bad Request</html>",
+            id="non-json-body",
+        ),
+        pytest.param(
+            "application/json",
+            "not json at all",
+            "Client error 400: not json at all",
+            id="malformed-json-body",
+        ),
+        pytest.param(
+            "application/json",
+            '["Message", "ignored"]',
+            'Client error 400: ["Message", "ignored"]',
+            id="json-array-body",
+        ),
+        pytest.param(
+            "application/json",
+            '{"Detail": "no Message key"}',
+            'Client error 400: {"Detail": "no Message key"}',
+            id="json-without-message",
+        ),
+        pytest.param("text/plain", "   ", "Client error 400", id="blank-body"),
+        pytest.param("text/plain", "", "Client error 400", id="empty-body"),
+    ],
+)
+def test_client_error_detail_falls_back_to_the_response_body(
+    stream: XeroStream,
+    content_type: str,
+    body: str,
+    expected: str,
+) -> None:
+    """A 4xx body the tap cannot read as a Xero error still has to say something."""
+    api_response = response(400, headers={"Content-Type": content_type}, body=body)
+
+    with pytest.raises(XeroAPIError) as raised:
+        stream.validate_response(api_response)
+
+    assert str(raised.value) == expected
+    assert raised.value.response is api_response
+
+
+def test_client_error_body_fallback_is_bounded(stream: XeroStream) -> None:
+    """The response-text fallback is bounded the same way the parsed detail is."""
+    omitted_marker = "MUST-NOT-APPEAR"
+    api_response = response(
+        400,
+        headers={"Content-Type": "text/html"},
+        body=("y" * 1_000) + omitted_marker,
+    )
+
+    with pytest.raises(XeroAPIError) as raised:
+        stream.validate_response(api_response)
+
+    message = str(raised.value)
+    assert message.startswith("Client error 400: ")
+    assert omitted_marker not in message
+    assert len(message) <= 520
