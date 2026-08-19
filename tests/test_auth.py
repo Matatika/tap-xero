@@ -1,5 +1,6 @@
 """Behavioral tests for authentication."""
 
+import copy
 import datetime
 import json
 from typing import Any
@@ -11,6 +12,7 @@ from tap_xero.auth import (
     ENDPOINT,
     ProxyXeroOAuth2Authenticator,
     XeroOAuth2Authenticator,
+    proxy_authenticator,
     standard_authenticator,
     validate_refresh_proxy_url,
 )
@@ -189,6 +191,54 @@ def test_oauth_refresh_errors_do_not_echo_response_or_credentials(mode):
 
 
 @pytest.mark.parametrize("mode", ["standard", "proxy"])
+@pytest.mark.parametrize(
+    "token_response",
+    [
+        pytest.param({"body": "<html>invalid-body-secret</html>"}, id="non-json-body"),
+        pytest.param({"json": ["access_token", "invalid-body-secret"]}, id="json-array-body"),
+        pytest.param({"json": {"expires_in": 1800}}, id="missing-access-token"),
+        pytest.param({"json": {"access_token": "", "expires_in": 1800}}, id="empty-access-token"),
+        pytest.param({"json": {"access_token": 12345}}, id="non-string-access-token"),
+        pytest.param(
+            {"json": {"access_token": "ok", "expires_in": "soon"}}, id="expires-not-a-number"
+        ),
+        pytest.param(
+            {"json": {"access_token": "ok", "expires_in": {"seconds": 60}}},
+            id="expires-not-a-scalar",
+        ),
+    ],
+)
+@responses.activate
+def test_oauth_refresh_rejects_malformed_token_responses(mode, token_response):
+    """A 200 response the tap cannot read must fail closed, without echoing it."""
+    if mode == "standard":
+        authenticator = XeroOAuth2Authenticator(
+            client_id="invalid-client",
+            client_secret="invalid-secret",
+            refresh_token="invalid-refresh-token",
+        )
+        endpoint = ENDPOINT
+    else:
+        authenticator = ProxyXeroOAuth2Authenticator(
+            refresh_token="invalid-refresh-token",
+            proxy_auth="Bearer invalid-proxy-secret",
+            auth_endpoint="https://proxy.example/token",
+        )
+        endpoint = "https://proxy.example/token"
+
+    responses.add(responses.POST, endpoint, status=200, **token_response)
+
+    with pytest.raises(RuntimeError) as raised:
+        authenticator.update_access_token()
+
+    assert str(raised.value) == "Failed to update access token (invalid response)"
+
+    # No half-applied state: a rejected response must not leave a token behind.
+    assert authenticator.access_token is None
+    assert authenticator.refresh_token == "invalid-refresh-token"
+
+
+@pytest.mark.parametrize("mode", ["standard", "proxy"])
 @pytest.mark.parametrize("rotates", [True, False])
 @responses.activate
 def test_oauth_refresh_preserves_rotation_and_reuses_the_current_token(mode, rotates):
@@ -232,7 +282,6 @@ def test_oauth_refresh_preserves_rotation_and_reuses_the_current_token(mode, rot
 
 
 def test_authenticators_do_not_share_credentials_between_configurations():
-    standard_authenticator.cache_clear()
     first = standard_authenticator("first-client", "first-secret", "first-token")
     first_again = standard_authenticator("first-client", "first-secret", "first-token")
     second = standard_authenticator("second-client", "second-secret", "second-token")
@@ -243,6 +292,78 @@ def test_authenticators_do_not_share_credentials_between_configurations():
     assert first.refresh_token == "first-token"
     assert second.client_id == "second-client"
     assert second.refresh_token == "second-token"
+
+
+@pytest.mark.parametrize(
+    ("refresh_token", "proxy_auth", "auth_endpoint"),
+    [
+        pytest.param("other-token", "Bearer proxy-a", "https://proxy-a.example/token", id="token"),
+        pytest.param("proxy-token", "Bearer proxy-b", "https://proxy-a.example/token", id="auth"),
+        pytest.param(
+            "proxy-token", "Bearer proxy-a", "https://proxy-b.example/token", id="endpoint"
+        ),
+    ],
+)
+def test_proxy_authenticators_do_not_share_credentials_between_configurations(
+    refresh_token,
+    proxy_auth,
+    auth_endpoint,
+):
+    """Every part of the proxy cache key must isolate, the endpoint included.
+
+    Two different proxy endpoints sharing one authenticator would also share the
+    refresh token it rotates in place.
+    """
+    first = proxy_authenticator("proxy-token", "Bearer proxy-a", "https://proxy-a.example/token")
+    first_again = proxy_authenticator(
+        "proxy-token",
+        "Bearer proxy-a",
+        "https://proxy-a.example/token",
+    )
+    other = proxy_authenticator(refresh_token, proxy_auth, auth_endpoint)
+
+    assert first is first_again
+    assert first is not other
+    assert other.refresh_token == refresh_token
+    assert other.auth_endpoint == auth_endpoint
+    assert other.oauth_request_headers["Authorization"] == proxy_auth
+
+    # A rotated token on one proxy configuration must not reach the other.
+    first.refresh_token = "rotated-proxy-token"
+    assert other.refresh_token == refresh_token
+
+
+@responses.activate
+def test_streams_using_different_proxies_get_separate_authenticators():
+    """The proxy authenticator is reached through the stream, not just the cache."""
+    responses.add(
+        responses.POST,
+        "http://localhost:8080/api/tokens/oauth2-xero/token",
+        json={"access_token": "token_a", "expires_in": 1800},
+        status=200,
+    )
+
+    other_config = copy.deepcopy(PROXY_CONFIG)
+    other_config["oauth_credentials"]["refresh_proxy_url"] = "https://proxy.example/token"
+
+    stream = TapXero(config=PROXY_CONFIG).discover_streams()[0]
+    other_stream = TapXero(config=other_config).discover_streams()[0]
+    assert isinstance(stream, XeroStream)
+    assert isinstance(other_stream, XeroStream)
+
+    authenticator = stream.authenticator
+    other_authenticator = other_stream.authenticator
+
+    assert isinstance(authenticator, ProxyXeroOAuth2Authenticator)
+    assert isinstance(other_authenticator, ProxyXeroOAuth2Authenticator)
+    assert authenticator is not other_authenticator
+    assert authenticator.auth_endpoint == "http://localhost:8080/api/tokens/oauth2-xero/token"
+    assert other_authenticator.auth_endpoint == "https://proxy.example/token"
+
+    # Only the first proxy is mocked, so a shared authenticator would be visible here.
+    authenticator.update_access_token()
+    assert authenticator.access_token == "token_a"
+    assert other_authenticator.access_token is None
 
 
 def test_refresh_proxy_requires_https_except_for_loopback():
